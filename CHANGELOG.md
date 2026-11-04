@@ -1,3 +1,9 @@
+## 1.0.0-alpha.6 (2026-11-04)
+
+### Bug Fixes
+
+- check unwrapped Bash commands as they are
+
 ## 1.0.0-alpha.5 (2026-11-04)
 
 ### Features

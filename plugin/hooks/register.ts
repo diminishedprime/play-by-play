@@ -46,12 +46,13 @@ export const register: Register = (on) => {
 
   on("tool.check", { tool: "Bash" }, async ($, e, next) => {
     const verdict = await next(e);
-    if (!installed || verdict.hook) return verdict;
+    const { command } = e.input as BuiltinToolInputs["Bash"];
+    if (!installed || verdict.hook || !command.startsWith("pbp -c '")) {
+      return verdict;
+    }
     return $.tool.check({
       tool: "Bash",
-      input: {
-        command: unwrapped((e.input as BuiltinToolInputs["Bash"]).command),
-      },
+      input: { command: unwrapped(command) },
     });
   }).catch(() => ({ decision: "deny" }));
 

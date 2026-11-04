@@ -5,6 +5,10 @@ description:
   the viewer shows nothing, Claude's commands aren't wrapped in `pbp -c`, the VS
   Code extension can't find play-by-play, links don't open, or the user asks
   whether play-by-play is installed correctly.
+allowed-tools:
+  - Bash(command -v play-by-play)
+  - Bash(play-by-play doctor)
+  - Bash("$HOME/.cargo/bin/play-by-play" doctor)
 ---
 
 # play-by-play doctor

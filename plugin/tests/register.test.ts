@@ -71,6 +71,19 @@ test("a wrapped Bash command is checked as Claude wrote it", async ($, on) => {
   expect(check.decision).toBe("allow");
 });
 
+test("a Bash command that isn't wrapped is checked as it is", async ($, on) => {
+  const { checked } = engine(on, { binary: true });
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  const check = await $.tool.check({
+    tool: "Bash",
+    input: { command: "play-by-play doctor" },
+  });
+
+  expect(checked).toEqual([{ command: "play-by-play doctor" }]);
+  expect(check.decision).toBe("allow");
+});
+
 test("a classic hook's verdict on a wrapped Bash command stands", async ($, on) => {
   engine(on, {
     binary: true,
