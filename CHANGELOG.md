@@ -1,3 +1,9 @@
+## 1.0.0-alpha.7 (2026-11-04)
+
+### Bug Fixes
+
+- run doctor skill with only allowed commands
+
 ## 1.0.0-alpha.6 (2026-11-04)
 
 ### Bug Fixes
