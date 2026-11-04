@@ -1,3 +1,9 @@
+## 1.0.0-alpha.9 (2026-11-04)
+
+### Bug Fixes
+
+- allow the guide skill's unwrap help command
+
 ## 1.0.0-alpha.8 (2026-11-04)
 
 ### Features

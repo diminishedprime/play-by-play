@@ -5,6 +5,9 @@ description:
   asks what play-by-play is, how the viewer or the VS Code extension works, why
   their Bash commands look like `pbp -c '...'`, how it affects permissions or
   hooks, or why the viewer isn't showing.
+allowed-tools:
+  - Bash(command -v play-by-play)
+  - Bash(play-by-play unwrap --help)
 ---
 
 # play-by-play
