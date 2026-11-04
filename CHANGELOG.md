@@ -1,3 +1,9 @@
+## 1.0.0-alpha.2 (2026-11-04)
+
+### Bug Fixes
+
+- replace an existing play-by-play marketplace on install
+
 ## 1.0.0-alpha.1 (2026-11-04)
 
 ### Features

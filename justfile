@@ -40,6 +40,7 @@ plugin-types:
 # Install the play-by-play binary, the Claude plugin, and the VS Code extension
 install: _deps
     cargo install --path cli --locked
+    -claude plugin marketplace remove play-by-play
     claude plugin install play-by-play --marketplace "$PWD"
     pnpm --dir extension package
     code --install-extension extension/play-by-play-vscode-$(node -p 'require("./extension/package.json").version').vsix
