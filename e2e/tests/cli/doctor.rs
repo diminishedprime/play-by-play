@@ -28,7 +28,7 @@ async fn passes_when_everything_is_set_up() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -41,6 +41,36 @@ async fn passes_when_everything_is_set_up() {
 {INDENT}{OK}{PLUGIN} installed and enabled{END}
 {INDENT}{OK}{EXTENSION} installed{END}
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
+"
+        ));
+}
+
+#[tokio::test]
+async fn leaves_out_color_outside_a_terminal() {
+    let world = World::new();
+
+    world.installs("play-by-play");
+    world.installs("pbp");
+    world.has("zsh");
+    world.claude_lists_plugin("play-by-play@play-by-play", "0.1.0", true);
+    world.code_lists_extension("diminishedprime.play-by-play-vscode@0.1.0");
+
+    world
+        .sut(["doctor"])
+        .only_fakes_on_path()
+        .run()
+        .succeeds()
+        .prints(&format!(
+            r"Checking play-by-play's setup
+{INDENT}✅  $PATH: play-by-play
+{INDENT}✅  $PATH: pbp
+{INDENT}✅  $PATH: zsh
+{INDENT}✅  $PATH: claude
+{INDENT}✅  $PATH: code
+{INDENT}✅  Log folder: writable
+{INDENT}✅  Plugin: installed and enabled
+{INDENT}✅  Extension: installed
+{INDENT}✅  Version: all versions match at 0.1.0
 "
         ));
 }
@@ -59,7 +89,7 @@ async fn fails_when_cargos_bin_isnt_on_the_path() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -89,7 +119,7 @@ async fn fails_when_play_by_play_isnt_on_the_path() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -119,7 +149,7 @@ async fn fails_when_pbp_isnt_on_the_path() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -149,7 +179,7 @@ async fn fails_when_zsh_isnt_on_the_path() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -179,7 +209,7 @@ async fn skips_the_plugin_when_claude_isnt_on_the_path() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -207,7 +237,7 @@ async fn skips_vs_code_when_code_isnt_on_the_path() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -234,7 +264,7 @@ async fn leaves_out_the_versions_when_theres_nothing_to_compare() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -263,7 +293,7 @@ async fn fails_when_the_log_folder_isnt_writable() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -298,7 +328,7 @@ async fn checks_tmuxs_hyperlinks_inside_tmux() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .inside_tmux()
-        .run()
+        .run_in_terminal()
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -332,7 +362,7 @@ async fn warns_when_tmuxs_hyperlinks_are_off() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .inside_tmux()
-        .run()
+        .run_in_terminal()
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -365,7 +395,7 @@ async fn fails_when_the_plugin_isnt_installed() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -396,7 +426,7 @@ async fn fails_when_the_plugin_is_disabled() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -427,7 +457,7 @@ async fn fails_when_the_extension_isnt_installed() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -458,7 +488,7 @@ async fn fails_when_the_versions_differ() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -491,7 +521,7 @@ async fn fails_when_the_plugins_version_differs_without_vs_code() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -522,7 +552,7 @@ async fn fails_when_the_extensions_version_differs_without_claude() {
     world
         .sut(["doctor"])
         .only_fakes_on_path()
-        .run()
+        .run_in_terminal()
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup

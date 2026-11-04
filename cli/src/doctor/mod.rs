@@ -9,7 +9,7 @@ mod version;
 
 use std::env;
 use std::fmt::{self, Display, Formatter};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
@@ -113,13 +113,25 @@ enum Outcome {
     Skipped,
 }
 
+impl Outcome {
+    fn mark(&self) -> &'static str {
+        match self {
+            Outcome::Passed => "✅  ",
+            Outcome::Failed => "❌  ",
+            Outcome::Warning => "⚠️  ",
+            Outcome::Skipped => "⏹️  ",
+        }
+    }
+}
+
 impl Display for Outcome {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mark = self.mark();
         match self {
-            Outcome::Passed => write!(f, "✅  {}", Color::Green),
-            Outcome::Failed => write!(f, "❌  {}", Color::Red),
-            Outcome::Warning => write!(f, "⚠️  {}", Color::Yellow),
-            Outcome::Skipped => write!(f, "⏹️  {GRAY}"),
+            Outcome::Passed => write!(f, "{mark}{}", Color::Green),
+            Outcome::Failed => write!(f, "{mark}{}", Color::Red),
+            Outcome::Warning => write!(f, "{mark}{}", Color::Yellow),
+            Outcome::Skipped => write!(f, "{mark}{GRAY}"),
         }
     }
 }
@@ -127,6 +139,7 @@ impl Display for Outcome {
 struct Assessment<'a> {
     outcome: Outcome,
     label: &'static str,
+    subject: Option<&'static str>,
     text: String,
     fix: Option<Fix<'a>>,
 }
@@ -141,29 +154,45 @@ impl<'a> Assessment<'a> {
         Assessment {
             outcome,
             label,
+            subject: None,
             text: text.into(),
             fix,
+        }
+    }
+
+    fn about(self, subject: &'static str) -> Assessment<'a> {
+        Assessment {
+            subject: Some(subject),
+            ..self
         }
     }
 
     fn failed(&self) -> bool {
         matches!(self.outcome, Outcome::Failed)
     }
-}
 
-impl Display for Assessment<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Assessment {
-            outcome,
-            label,
-            text,
-            fix,
-        } = self;
-        write!(f, "  {outcome}{BOLD}{label}{NORMAL} {text}")?;
-        if let Some(fix) = fix {
-            write!(f, "\n      Fix: {fix}")?;
+    fn write(&self, out: &mut impl Write, colored: bool) -> io::Result<()> {
+        let (bold, normal, reset) = if colored {
+            (BOLD, NORMAL, RESET)
+        } else {
+            ("", "", "")
+        };
+        if colored {
+            write!(out, "  {}", self.outcome)?;
+        } else {
+            write!(out, "  {}", self.outcome.mark())?;
         }
-        writeln!(f, "{RESET}")
+        write!(out, "{bold}{}{normal}", self.label)?;
+        if let Some(subject) = self.subject {
+            write!(out, " {bold}{subject}{normal}")?;
+        }
+        if !self.text.is_empty() {
+            write!(out, " {}", self.text)?;
+        }
+        if let Some(fix) = &self.fix {
+            write!(out, "\n      Fix: {fix}")?;
+        }
+        writeln!(out, "{reset}")
     }
 }
 
@@ -175,6 +204,7 @@ impl Display for Assessment<'_> {
 /// When a check fails, or `claude`, `code` or `tmux` can't be run.
 pub fn doctor(dir: &Path) -> AppResult {
     let facts = Facts::gather(dir)?;
+    let colored = io::stdout().is_terminal();
     let mut out = BufWriter::new(io::stdout().lock());
     writeln!(out, "Checking play-by-play's setup")?;
     let healthy = OnPath::assessments(&facts)
@@ -183,9 +213,9 @@ pub fn doctor(dir: &Path) -> AppResult {
         .chain(Plugin::assessments(&facts))
         .chain(Extension::assessments(&facts))
         .chain(Versions::assessments(&facts))
-        .try_fold(true, |healthy, line| {
-            write!(out, "{line}")?;
-            Ok::<_, AppError>(healthy && !line.failed())
+        .try_fold(true, |healthy, assessment| {
+            assessment.write(&mut out, colored)?;
+            Ok::<_, AppError>(healthy && !assessment.failed())
         })?;
     out.flush()?;
     if healthy {

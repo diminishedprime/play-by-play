@@ -1,8 +1,6 @@
 use std::env;
 use std::path::Path;
 
-use crate::log::{BOLD, NORMAL};
-
 use super::{Assessment, Check, Facts, Fix};
 
 pub(super) enum Missing<'a> {
@@ -54,21 +52,19 @@ impl Check for OnPath {
         PROGRAMS
             .into_iter()
             .filter(|(_, need)| *need != Need::InsideTmux || facts.inside_tmux)
-            .map(|(name, need)| match (OnPath::found(name), need) {
-                (true, _) => Self::passed(format!("{BOLD}{name}{NORMAL}")),
-                (false, Need::Optional(unchecked)) => Self::skipped(format!(
-                    "{BOLD}{name}{NORMAL} not on PATH, so {unchecked} won't be checked"
-                )),
-                (false, Need::Installed) => Self::failed(
-                    format!("{BOLD}{name}{NORMAL} not on PATH"),
-                    OnPath::uninstalled(facts, name),
-                ),
-                (false, Need::Shell) => {
-                    Self::failed(format!("{BOLD}{name}{NORMAL} not on PATH"), Missing::Zsh)
-                }
-                (false, Need::InsideTmux) => {
-                    Self::failed(format!("{BOLD}{name}{NORMAL} not on PATH"), Missing::Tmux)
-                }
+            .map(|(name, need)| {
+                let assessment = match (OnPath::found(name), need) {
+                    (true, _) => Self::passed(""),
+                    (false, Need::Optional(unchecked)) => {
+                        Self::skipped(format!("not on PATH, so {unchecked} won't be checked"))
+                    }
+                    (false, Need::Installed) => {
+                        Self::failed("not on PATH", OnPath::uninstalled(facts, name))
+                    }
+                    (false, Need::Shell) => Self::failed("not on PATH", Missing::Zsh),
+                    (false, Need::InsideTmux) => Self::failed("not on PATH", Missing::Tmux),
+                };
+                assessment.about(name)
             })
     }
 

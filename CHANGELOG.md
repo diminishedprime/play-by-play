@@ -1,3 +1,9 @@
+## 1.0.0-alpha.8 (2026-11-04)
+
+### Features
+
+- leave color out of doctor outside a terminal
+
 ## 1.0.0-alpha.7 (2026-11-04)
 
 ### Bug Fixes
