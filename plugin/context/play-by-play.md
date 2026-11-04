@@ -9,3 +9,7 @@ it through `tail`, `head` or `grep` cuts down what the user sees too. When you
 expect a lot of output, run the command bare in the background so it streams to
 the user in full, then search its output file for what you need once it
 finishes.
+
+The `play-by-play:guide` skill explains how play-by-play works and how to work
+alongside it. When the user seems unsure what play-by-play is or what it's
+doing, offer them an overview from it.

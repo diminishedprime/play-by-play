@@ -1,6 +1,7 @@
 //! Runs the `play-by-play` binary named by `PLAY_BY_PLAY_BIN`, which
 //! `just e2e test` builds and sets.
 
+mod doctor;
 mod world;
 
 use std::path::Path;

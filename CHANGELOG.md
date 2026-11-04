@@ -1,3 +1,9 @@
+## 1.0.0-alpha.5 (2026-11-04)
+
+### Features
+
+- add doctor command with guide and doctor skills
+
 ## 1.0.0-alpha.4 (2026-11-04)
 
 ### Bug Fixes

@@ -3,6 +3,7 @@
 
 pub mod channel;
 pub mod cmd;
+pub mod doctor;
 pub mod error;
 pub mod log;
 pub mod markdown;
@@ -16,7 +17,7 @@ pub mod watch;
 use std::env;
 use std::path::PathBuf;
 
-use crate::cmd::Action::{NoteHeader, NoteResult, Run, Unwrap, Watch, WatchInTmux};
+use crate::cmd::Action::{Doctor, NoteHeader, NoteResult, Run, Unwrap, Watch, WatchInTmux};
 use crate::cmd::Cli;
 use crate::error::AppResult;
 use crate::log::Log;
@@ -39,5 +40,6 @@ pub fn main(cli: Cli) -> AppResult {
         WatchInTmux => watch::in_tmux(&log),
         Run { command } => run::run(&log, &command),
         Unwrap => run::unwrap(),
+        Doctor => doctor::doctor(&dir),
     }
 }

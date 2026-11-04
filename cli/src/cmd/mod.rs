@@ -33,7 +33,25 @@ pub enum Command {
         #[arg(long)]
         command: String,
     },
-    /// Prints the command a `run` wrapper on stdin holds, for permission checks.
+    /// Prints the command a `run` wrapper on stdin hold.
+    ///
+    /// This is useful with a `PreToolUse` hook on Bash that handles custom
+    /// permissions:
+    ///
+    /// ```json
+    /// "PreToolUse": [
+    ///   {
+    ///     "matcher": "Bash",
+    ///     "hooks": [
+    ///       {
+    ///         "type": "command",
+    ///         "command": "jq -j .tool_input.command | play-by-play unwrap | command_approver"
+    ///       }
+    ///     ]
+    ///   }
+    /// ]
+    /// ```
+    #[command(verbatim_doc_comment)]
     Unwrap,
     /// Follows the commands Claude runs in this workspace.
     Watch {
@@ -42,6 +60,8 @@ pub enum Command {
         #[arg(long)]
         tmux: bool,
     },
+    /// Checks that play-by-play is set up to work.
+    Doctor,
     /// Shows the viewer a tool call that isn't a command.
     Note {
         /// Before or after the tool runs.
@@ -63,6 +83,8 @@ pub enum Action {
     Watch,
     /// Follow the workspace's log inside its tmux session.
     WatchInTmux,
+    /// Check play-by-play's setup.
+    Doctor,
     /// Show a tool call's header.
     NoteHeader(NoteKind),
     /// Show a tool call's result, closing in its header's color.
@@ -76,6 +98,7 @@ impl From<Command> for Action {
             Command::Unwrap => Action::Unwrap,
             Command::Watch { tmux: false } => Action::Watch,
             Command::Watch { tmux: true } => Action::WatchInTmux,
+            Command::Doctor => Action::Doctor,
             Command::Note {
                 phase: NotePhase::Header { kind },
             } => Action::NoteHeader(kind),

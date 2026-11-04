@@ -2,7 +2,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::iter;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use super::ran::Ran;
@@ -10,6 +10,7 @@ use super::ran::Ran;
 pub struct Sut {
     command: Command,
     stdin: String,
+    fakes: PathBuf,
 }
 
 impl Sut {
@@ -26,11 +27,24 @@ impl Sut {
             .args(args)
             .env("TMPDIR", dir)
             .env("PATH", path)
-            .env_remove("CLAUDE_PROJECT_DIR");
+            .env_remove("CLAUDE_PROJECT_DIR")
+            .env_remove("TMUX")
+            .env("CARGO_HOME", dir.join("cargo"));
         Sut {
             command,
             stdin: String::new(),
+            fakes: dir.join("bin"),
         }
+    }
+
+    pub fn inside_tmux(mut self) -> Self {
+        self.command.env("TMUX", "/tmp/tmux-501/default,1,0");
+        self
+    }
+
+    pub fn only_fakes_on_path(mut self) -> Self {
+        self.command.env("PATH", &self.fakes);
+        self
     }
 
     pub fn project(mut self, root: &Path) -> Self {

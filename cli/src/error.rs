@@ -22,6 +22,9 @@ pub enum AppError {
     /// The viewer's terminal can't be asked its size.
     #[error(transparent)]
     Terminal(#[from] rustix::io::Errno),
+    /// One of `doctor`'s checks failed.
+    #[error("a check failed")]
+    Unhealthy,
     /// The wrapped command exited with this code, so play-by-play does too.
     #[error("the command exited with {0}")]
     Exited(u8),

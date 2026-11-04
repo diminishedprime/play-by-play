@@ -159,12 +159,17 @@ impl Screen {
 /// fresh screen.
 pub const CLEAR: &str = "\x1b[H\x1b[2J";
 
-/// Ends a [`Color`] or [`BOLD`].
+/// Ends a [`Color`], [`BOLD`], or [`GRAY`].
 pub const RESET: &str = "\x1b[0m";
 
 /// Starts bold text, ended by [`RESET`].
 pub const BOLD: &str = "\x1b[1m";
 
+/// Ends [`BOLD`] while keeping the current color.
+pub const NORMAL: &str = "\x1b[22m";
+
+/// Starts gray text, ended by [`RESET`].
+pub const GRAY: &str = "\x1b[90m";
 /// A color the viewer's headers and exit lines are written in; it displays as
 /// the escape that switches to it.
 #[derive(Clone, Copy, ValueEnum)]
