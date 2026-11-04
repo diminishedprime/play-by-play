@@ -22,5 +22,6 @@ export async function start(vscode: Vscode, programs: Programs) {
     shellArgs: ["watch"],
     cwd: folder.uri.fsPath,
     location: vscode.TerminalLocation.Panel,
+    isTransient: true,
   });
 }

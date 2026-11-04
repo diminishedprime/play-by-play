@@ -1,3 +1,9 @@
+## 1.0.0-alpha.3 (2026-11-04)
+
+### Bug Fixes
+
+- keep VS Code from restoring an old viewer terminal
+
 ## 1.0.0-alpha.2 (2026-11-04)
 
 ### Bug Fixes

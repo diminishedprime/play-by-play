@@ -15,6 +15,7 @@ test("opens the viewer in a terminal in the panel", async () => {
       shellArgs: ["watch"],
       cwd: "/Users/me/programming/notes",
       location: vscode.TerminalLocation.Panel,
+      isTransient: true,
     },
   ]);
 });
