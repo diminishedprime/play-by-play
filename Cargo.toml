@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["cli", "e2e", "play-by-play"]
+
+[workspace.lints.rust]
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }

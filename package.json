@@ -1,0 +1,21 @@
+{
+  "name": "play-by-play-release",
+  "private": true,
+  "version": "1.0.0-alpha.1",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/diminishedprime/play-by-play.git"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
+    "@types/node": "^25.9.6",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
+    "prettier": "^3.9.10",
+    "semantic-release": "^25.0.9",
+    "tinyglobby": "^0.2.17",
+    "typescript": "^6.0.3"
+  }
+}

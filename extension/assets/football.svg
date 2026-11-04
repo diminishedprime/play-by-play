@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="ball">
+      <path d="M92 512 C162 172 862 172 932 512 C862 852 162 852 92 512 Z"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(512 512) scale(1.402) rotate(-35) translate(-512 -512)">
+    <path d="M92 512 C162 172 862 172 932 512 C862 852 162 852 92 512 Z" fill="#D97757"/>
+    <g stroke="#F5EFE6" stroke-width="26" fill="none" clip-path="url(#ball)">
+      <path d="M212 280 C262 400 262 624 212 744"/>
+      <path d="M812 280 C762 400 762 624 812 744"/>
+    </g>
+  </g>
+  <g stroke="#F5EFE6" stroke-width="36" stroke-linecap="round" transform="translate(512 512) scale(2.24) translate(-512 -480)">
+    <line x1="512" y1="480" x2="512" y2="385"/>
+    <line x1="512" y1="480" x2="607" y2="480"/>
+    <line x1="512" y1="480" x2="512" y2="575"/>
+    <line x1="512" y1="480" x2="417" y2="480"/>
+    <line x1="512" y1="480" x2="560" y2="432"/>
+    <line x1="512" y1="480" x2="560" y2="528"/>
+    <line x1="512" y1="480" x2="464" y2="528"/>
+    <line x1="512" y1="480" x2="464" y2="432"/>
+  </g>
+</svg>

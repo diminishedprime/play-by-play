@@ -1,0 +1,6 @@
+/target
+node_modules
+/plugin/.claude-plugin/types
+/extension/dist
+/extension/*.vsix
+/extension/LICENSE

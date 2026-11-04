@@ -1,0 +1,12 @@
+{
+  "name": "play-by-play",
+  "description": "Shows Claude's tool calls live in a terminal.",
+  "owner": { "name": "Matthew Hamrick" },
+  "plugins": [
+    {
+      "name": "play-by-play",
+      "source": "./plugin",
+      "description": "Shows every tool call Claude makes live in a terminal running `play-by-play watch`"
+    }
+  ]
+}

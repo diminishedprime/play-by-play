@@ -1,0 +1,9 @@
+{
+  "name": "play-by-play",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "devDependencies": {
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3"
+  }
+}

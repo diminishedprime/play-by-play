@@ -1,0 +1,11 @@
+[package]
+name = "play-by-play"
+version = "1.0.0-alpha.1"
+edition = "2024"
+
+[dependencies]
+indexmap = "2.14.2"
+thiserror = "2.0.21"
+
+[lints]
+workspace = true

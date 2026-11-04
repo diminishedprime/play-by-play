@@ -1,0 +1,8 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+target := justfile_directory() / "target"
+
+# Run the e2e tests against a debug build of play-by-play.
+test *args:
+    cargo build -p play-by-play-cli
+    PLAY_BY_PLAY_BIN={{ target }}/debug/play-by-play cargo test -p play-by-play-e2e {{ args }}
