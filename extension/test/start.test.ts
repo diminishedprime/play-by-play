@@ -20,6 +20,14 @@ test("opens the viewer in a terminal in the panel", async () => {
   ]);
 });
 
+test("shows the viewer without taking focus", async () => {
+  const vscode = new FakeVscode(["/Users/me/programming/notes"]);
+
+  await start(vscode, new FakePrograms(["play-by-play"]));
+
+  expect(vscode.window.shown).toEqual([{ preserveFocus: true }]);
+});
+
 test("opens no viewer without a folder", async () => {
   const vscode = new FakeVscode(undefined);
 

@@ -6,8 +6,15 @@ class FakeWindow implements VSCodeWindow {
 
   readonly errors: string[] = [];
 
+  readonly shown: { preserveFocus: boolean | undefined }[] = [];
+
   createTerminal(options: TerminalOptions) {
     this.terminals.push(options);
+    return {
+      show: (preserveFocus?: boolean) => {
+        this.shown.push({ preserveFocus });
+      },
+    };
   }
 
   showErrorMessage(message: string) {

@@ -16,7 +16,7 @@ export async function start(vscode: Vscode, programs: Programs) {
     );
     return;
   }
-  vscode.window.createTerminal({
+  const terminal = vscode.window.createTerminal({
     name: "Play by Play",
     shellPath: "play-by-play",
     shellArgs: ["watch"],
@@ -24,4 +24,5 @@ export async function start(vscode: Vscode, programs: Programs) {
     location: vscode.TerminalLocation.Panel,
     isTransient: true,
   });
+  terminal.show(true);
 }

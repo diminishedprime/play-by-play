@@ -1,3 +1,9 @@
+## 1.0.0-alpha.4 (2026-11-04)
+
+### Bug Fixes
+
+- show the viewer terminal when the window opens
+
 ## 1.0.0-alpha.3 (2026-11-04)
 
 ### Bug Fixes

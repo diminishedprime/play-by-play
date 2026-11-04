@@ -1,7 +1,9 @@
 import type * as vscode from "vscode";
 
 export interface VSCodeWindow {
-  createTerminal(options: vscode.TerminalOptions): unknown;
+  createTerminal(
+    options: vscode.TerminalOptions,
+  ): Pick<vscode.Terminal, "show">;
   showErrorMessage(message: string): unknown;
 }
 
