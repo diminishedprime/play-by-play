@@ -1,7 +1,7 @@
 //! The viewer: left running in a terminal (the VS Code task opens one), it shows
 //! every command Claude runs in the workspace as it runs.
 
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -78,6 +78,10 @@ impl Follower {
         let changes = Wake::changes(&self.path)?;
         self.from = self.last_screen()?;
         let mut stdout = io::stdout();
+        if fs::metadata(&self.path)?.len() == 0 {
+            writeln!(stdout, "play-by-play is watching this workspace.")?;
+            writeln!(stdout, "Claude's commands show up here as they run.")?;
+        }
         self.print_tail(&mut stdout)?;
         let mut wakes = changes.merge(resizes);
         while let Some(wake) = wakes.next().await {

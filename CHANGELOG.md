@@ -1,3 +1,9 @@
+## 1.0.0-alpha.10 (2026-11-05)
+
+### Features
+
+- welcome the viewer when there's nothing to replay
+
 ## 1.0.0-alpha.9 (2026-11-04)
 
 ### Bug Fixes

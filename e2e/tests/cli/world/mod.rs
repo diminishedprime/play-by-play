@@ -68,6 +68,10 @@ impl World {
         &mut self.viewer
     }
 
+    pub fn reopen_viewer(&mut self) {
+        self.viewer = Viewer::start(self.dir.path(), &self.workspace);
+    }
+
     pub fn viewer_width(&self) -> String {
         self.viewer_recorded("columns")
             .expect("the viewer recorded its width")

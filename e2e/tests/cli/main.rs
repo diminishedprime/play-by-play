@@ -302,6 +302,35 @@ async fn picks_the_code_theme_closest_to_the_viewers_background() {
 }
 
 #[tokio::test]
+async fn welcomes_the_viewer_when_theres_nothing_to_replay() {
+    let mut world = World::new();
+
+    world
+        .viewer()
+        .sees(&[
+            "play-by-play is watching this workspace.",
+            "Claude's commands show up here as they run.",
+        ])
+        .await;
+}
+
+#[tokio::test]
+async fn replays_the_last_command_instead_of_the_welcome() {
+    let mut world = World::new();
+
+    world.claude().runs("echo hi").succeeds();
+    world.viewer().sees(&["$ echo hi", "hi", "exit: 0"]).await;
+    world.reopen_viewer();
+    world.viewer().sees(&["$ echo hi", "hi", "exit: 0"]).await;
+
+    assert!(
+        !world
+            .viewer()
+            .printed("play-by-play is watching this workspace.")
+    );
+}
+
+#[tokio::test]
 async fn records_the_viewers_width() {
     let world = World::new();
 

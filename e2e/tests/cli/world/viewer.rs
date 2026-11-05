@@ -132,6 +132,10 @@ impl Viewer {
         }
     }
 
+    pub fn printed(&self, text: &str) -> bool {
+        String::from_utf8_lossy(&self.seen).contains(text)
+    }
+
     pub fn colors(&self) -> Vec<Style> {
         String::from_utf8_lossy(&self.seen)
             .split("\x1b[H\x1b[2J")
