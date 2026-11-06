@@ -10,6 +10,7 @@ use std::ffi::OsStr;
 use std::fs::{self, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 use std::time::Duration;
 
 use notify::{Config, KqueueWatcher, RecursiveMode, Watcher};
@@ -82,6 +83,10 @@ impl World {
         self.viewer = Some(Viewer::start(self.dir.path(), &self.workspace));
     }
 
+    pub fn reopen_viewer_for(&mut self, project: &Path) {
+        self.viewer = Some(Viewer::start_for(self.dir.path(), &self.workspace, project));
+    }
+
     pub fn follow(&mut self, pid: &str) {
         self.follower = Some(Viewer::follow(self.dir.path(), &self.workspace, pid));
     }
@@ -122,6 +127,22 @@ impl World {
         if let Some(follower) = self.follower.take() {
             follower.close().await;
         }
+    }
+
+    pub async fn viewer_hangs_up(&mut self) -> ExitStatus {
+        self.viewer
+            .take()
+            .expect("the world has a viewer")
+            .hang_up()
+            .await
+    }
+
+    pub async fn follower_hangs_up(&mut self) -> ExitStatus {
+        self.follower
+            .take()
+            .expect("the world has a follower")
+            .hang_up()
+            .await
     }
 
     pub async fn close_viewer(&mut self) {
@@ -256,6 +277,10 @@ impl World {
 
     pub fn has(&self, name: &str) {
         self.fake(name, "true");
+    }
+
+    pub fn lacks(&self, name: &str) {
+        fs::remove_file(self.dir().join("bin").join(name)).expect("the fake can be removed");
     }
 
     pub fn log_folder_is_read_only(&self) {

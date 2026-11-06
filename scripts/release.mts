@@ -84,7 +84,16 @@ async function addReleaseWorktree(work: string) {
 }
 
 async function commitAndPush(work: string, version: string, tag: string) {
-  await git("-C", work, "commit", "--all", "--quiet", "-m", `Play-by-Play ${version} release`);
+  await git(
+    "-C",
+    work,
+    "commit",
+    "--all",
+    "--quiet",
+    "--no-verify",
+    "-m",
+    `Play-by-Play ${version} release`,
+  );
   await git("tag", tag, "release");
   await git("push", "--quiet", "origin", "release", tag);
 }

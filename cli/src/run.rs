@@ -1,17 +1,16 @@
 //! What every Bash command Claude runs goes through: the plugin rewrites each one
-//! to `play-by-play run --command '<command>'`.
+//! to `pbp -c '<command>'`.
 
 use std::cell::Cell;
 use std::fs::{self, File};
-use std::future;
-use std::io::{self, Read, Write};
+use std::io::{self, ErrorKind, Read, Write};
 use std::path::Path;
-use std::pin::pin;
 use std::process::{self, Stdio};
 
 use play_by_play::env;
 use tokio::process::Command;
 use tokio::runtime;
+use tokio::sync::Notify;
 
 use crate::channel::Channel;
 use crate::error::{AppError, AppResult};
@@ -34,7 +33,7 @@ use crate::viewer::Viewer;
 pub fn run(log: &Log, dir: &Path, command: &str) -> AppResult {
     let color = log.next_color()?;
     let viewer = Viewer::watching(log)?;
-    let live = log.live_path(process::id());
+    let live_log = log.live_path(process::id());
     let follower = log.follower_dir(process::id());
     let columns = log.follower_columns_path(process::id());
     let mut log = log.append()?;
@@ -49,7 +48,7 @@ pub fn run(log: &Log, dir: &Path, command: &str) -> AppResult {
         .enable_all()
         .build()?
         .block_on(Tee::run(
-            shell, &log, dir, viewer, &live, &follower, &columns,
+            shell, &log, dir, viewer, &live_log, &follower, &columns,
         ))?;
     // The longest exit line is 19 bytes.
     // color 5 + "exit: " 6 + code 3 + reset 4 + newline 1
@@ -67,8 +66,7 @@ pub fn run(log: &Log, dir: &Path, command: &str) -> AppResult {
     }
 }
 
-/// Prints the command the `play-by-play run --command '<command>'` on stdin
-/// holds.
+/// Prints the command the `pbp -c '<command>'` on stdin holds.
 ///
 /// # Errors
 ///
@@ -101,7 +99,7 @@ impl Tee {
         log: &File,
         dir: &Path,
         viewer: Option<Viewer>,
-        live: &Path,
+        live_log: &Path,
         follower: &Path,
         columns: &Path,
     ) -> AppResult<u8> {
@@ -111,40 +109,39 @@ impl Tee {
         if let Some((channel, _)) = &watched {
             shell.env(env::SOCKET, channel.path());
         }
-        let mut child = shell.spawn()?;
+        let mut child = match shell.spawn() {
+            Err(error) if error.kind() == ErrorKind::NotFound => return Err(AppError::NoZsh),
+            spawned => spawned?,
+        };
         let stdout = child.stdout.take().expect("the command's stdout is piped");
         let stderr = child.stderr.take().expect("the command's stderr is piped");
         let claimed = Cell::new(false);
-        let mut copies = pin!(async {
+        let copied = Notify::new();
+        let copying = async {
             tokio::try_join!(
                 Router::new(log.try_clone()?, &claimed).copy(stdout, io::stdout()),
                 Router::new(log.try_clone()?, &claimed).copy(stderr, io::stderr()),
-            )
-        });
-        let mut claim = pin!(async {
-            match &mut watched {
-                Some((channel, viewer)) => {
-                    channel.accept().await?;
-                    claimed.set(true);
-                    channel.send_columns(viewer.columns()).await?;
-                    fs::create_dir_all(follower)?;
-                    channel.serve(File::create(live)?, follower, columns).await
-                }
-                None => future::pending().await,
-            }
-        });
-        tokio::select! {
-            copied = &mut copies => {
-                copied?;
-                if claimed.get() {
-                    claim.await?;
-                }
-            }
-            relayed = &mut claim => {
-                relayed?;
-                copies.await?;
-            }
+            )?;
+            copied.notify_one();
+            AppResult::Ok(())
         };
+        let claim = async {
+            let Some((channel, viewer)) = &mut watched else {
+                return Ok(());
+            };
+            tokio::select! {
+                biased;
+                accepted = channel.accept() => accepted?,
+                () = copied.notified() => return Ok(()),
+            }
+            claimed.set(true);
+            channel.send_columns(viewer.columns()).await?;
+            fs::create_dir_all(follower)?;
+            channel
+                .serve(File::create(live_log)?, follower, columns)
+                .await
+        };
+        tokio::try_join!(copying, claim)?;
         let status = child.wait().await?;
         Ok(status
             .code()

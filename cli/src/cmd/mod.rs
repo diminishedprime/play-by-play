@@ -16,7 +16,7 @@ use crate::log::Color;
     arg_required_else_help = true
 )]
 pub struct Cli {
-    /// Runs this command, as `run --command` does.
+    /// Runs this command in zsh for Claude, showing it to the viewer.
     #[arg(short, long)]
     pub command: Option<String>,
     /// What to do.
@@ -27,13 +27,7 @@ pub struct Cli {
 /// `play-by-play`'s subcommands.
 #[derive(Subcommand)]
 pub enum Command {
-    /// Runs a command in zsh for Claude, showing it to the viewer.
-    Run {
-        /// The command to run.
-        #[arg(long)]
-        command: String,
-    },
-    /// Prints the command a `run` wrapper on stdin hold.
+    /// Prints the command a `pbp -c` wrapper on stdin holds.
     ///
     /// This is useful with a `PreToolUse` hook on Bash that handles custom
     /// permissions:
@@ -62,7 +56,7 @@ pub enum Command {
     },
     /// Follows a live program's view, for the terminal opened for it.
     Follow {
-        /// The pid of the `run` the program is live under.
+        /// The pid of the play-by-play the program is live under.
         pid: u32,
     },
     /// Checks that play-by-play is set up to work.
@@ -82,13 +76,13 @@ pub enum Action {
         /// The command to run.
         command: String,
     },
-    /// Print the command a `run` wrapper holds.
+    /// Print the command a `pbp -c` wrapper holds.
     Unwrap,
     /// Follow the workspace's log.
     Watch,
     /// Follow the workspace's log inside its tmux session.
     WatchInTmux,
-    /// Follow a live program's view, by its `run`'s pid.
+    /// Follow a live program's view, by its play-by-play's pid.
     Follow(u32),
     /// Check play-by-play's setup.
     Doctor,
@@ -101,7 +95,6 @@ pub enum Action {
 impl From<Command> for Action {
     fn from(command: Command) -> Action {
         match command {
-            Command::Run { command } => Action::Run { command },
             Command::Unwrap => Action::Unwrap,
             Command::Watch { tmux: false } => Action::Watch,
             Command::Watch { tmux: true } => Action::WatchInTmux,

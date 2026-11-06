@@ -1,21 +1,29 @@
 use std::env as process_env;
 use std::future;
-use std::io::Write as _;
+use std::io::{self, ErrorKind};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use bytes::{BufMut as _, BytesMut};
+use prost::Message as _;
+use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio_stream::StreamExt as _;
+use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
 use crate::env;
 use crate::error::AppResult;
+use crate::proto;
+
+const FRAME_LENGTH: usize = 4;
+const LINES_FIELD: u8 = 1;
+const LENGTH_DELIMITED: u8 = 2;
+const LINES_KEY: u8 = (LINES_FIELD << 3) | LENGTH_DELIMITED;
 
 pub(crate) struct Terminal {
-    socket: UnixStream,
+    widths: FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
+    socket: OwnedWriteHalf,
     columns: u16,
-    width: [u8; 2],
-    filled: usize,
-    frame: Vec<u8>,
-    drawn: usize,
-    drawn_columns: u16,
+    message: BytesMut,
 }
 
 impl Terminal {
@@ -23,18 +31,16 @@ impl Terminal {
         let Some(path) = process_env::var_os(env::SOCKET) else {
             return Ok(None);
         };
-        let mut socket = UnixStream::connect(path).await?;
-        let mut width = [0; 2];
-        socket.read_exact(&mut width).await?;
-        let columns = u16::from_ne_bytes(width);
+        let (read, socket) = UnixStream::connect(path).await?.into_split();
+        let mut widths = FramedRead::new(read, LengthDelimitedCodec::new());
+        let Some(columns) = Terminal::next_width(&mut widths).await? else {
+            return Err(io::Error::from(ErrorKind::UnexpectedEof).into());
+        };
         Ok(Some(Terminal {
+            widths,
             socket,
             columns,
-            width,
-            filled: 0,
-            frame: Vec::new(),
-            drawn: 0,
-            drawn_columns: columns,
+            message: BytesMut::new(),
         }))
     }
 
@@ -43,39 +49,36 @@ impl Terminal {
     }
 
     pub(crate) async fn resized(&mut self) -> AppResult {
-        loop {
-            let read = self.socket.read(&mut self.width[self.filled..]).await?;
-            if read == 0 {
-                return future::pending().await;
+        match Terminal::next_width(&mut self.widths).await? {
+            Some(columns) => {
+                self.columns = columns;
+                Ok(())
             }
-            self.filled += read;
-            if self.filled == self.width.len() {
-                self.filled = 0;
-                self.columns = u16::from_ne_bytes(self.width);
-                return Ok(());
-            }
+            None => future::pending().await,
         }
     }
 
-    pub(crate) async fn draw<'a>(&mut self, lines: impl IntoIterator<Item = &'a str>) -> AppResult {
-        self.frame.clear();
-        if self.drawn_columns != self.columns {
-            self.frame.extend_from_slice(b"\x1b[H\x1b[2J");
-        } else if self.drawn > 0 {
-            write!(self.frame, "\x1b[{}F\x1b[J", self.drawn)?;
-        }
-        self.drawn = 0;
-        self.drawn_columns = self.columns;
+    async fn next_width(
+        widths: &mut FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
+    ) -> AppResult<Option<u16>> {
+        let Some(message) = widths.next().await else {
+            return Ok(None);
+        };
+        let width = proto::Width::decode(message?)?;
+        Ok(Some(u16::try_from(width.columns)?))
+    }
+
+    pub(crate) async fn send<'a>(&mut self, lines: impl Iterator<Item = &'a str>) -> AppResult {
+        self.message.clear();
+        self.message.put_bytes(0, FRAME_LENGTH);
         for line in lines {
-            let cut = line
-                .char_indices()
-                .nth(usize::from(self.columns))
-                .map_or(line, |(at, _)| &line[..at]);
-            self.frame.extend_from_slice(cut.as_bytes());
-            self.frame.push(b'\n');
-            self.drawn += 1;
+            self.message.put_u8(LINES_KEY);
+            prost::encode_length_delimiter(line.len(), &mut self.message)?;
+            self.message.put_slice(line.as_bytes());
         }
-        self.socket.write_all(&self.frame).await?;
+        let length = u32::try_from(self.message.len() - FRAME_LENGTH)?;
+        self.message[..FRAME_LENGTH].copy_from_slice(&length.to_be_bytes());
+        self.socket.write_all(&self.message).await?;
         Ok(())
     }
 }

@@ -28,7 +28,7 @@ trait Check {
 
     fn assessments(facts: &Facts) -> impl Iterator<Item = Assessment<'_>>;
 
-    fn suggested_fix<'a>(problem: Self::Problem<'a>) -> Fix<'a>;
+    fn suggested_fix(problem: Self::Problem<'_>) -> Fix<'_>;
 
     fn passed<'a>(text: impl Into<String>) -> Assessment<'a> {
         Assessment::new(Outcome::Passed, Self::LABEL, text, None)
@@ -38,12 +38,12 @@ trait Check {
         Assessment::new(Outcome::Skipped, Self::LABEL, text, None)
     }
 
-    fn failed<'a>(text: impl Into<String>, problem: Self::Problem<'a>) -> Assessment<'a> {
+    fn failed(text: impl Into<String>, problem: Self::Problem<'_>) -> Assessment<'_> {
         let fix = Self::suggested_fix(problem);
         Assessment::new(Outcome::Failed, Self::LABEL, text, Some(fix))
     }
 
-    fn warned<'a>(text: impl Into<String>, problem: Self::Problem<'a>) -> Assessment<'a> {
+    fn warned(text: impl Into<String>, problem: Self::Problem<'_>) -> Assessment<'_> {
         let fix = Self::suggested_fix(problem);
         Assessment::new(Outcome::Warning, Self::LABEL, text, Some(fix))
     }
@@ -71,8 +71,8 @@ struct Facts {
     log_folder: PathBuf,
     writable: bool,
     hyperlinks: Option<bool>,
-    plugin: Option<Option<Listed>>,
-    extension: Option<Option<String>>,
+    plugin: OnPath<Listed>,
+    extension: OnPath<String>,
 }
 
 impl Facts {
@@ -86,23 +86,20 @@ impl Facts {
             cargo_bin: cargo_home.map(|cargo_home| cargo_home.join("bin")),
             log_folder: dir.to_path_buf(),
             writable: LogFolder::writable(dir).is_ok(),
-            hyperlinks: (inside_tmux && OnPath::found("tmux"))
+            hyperlinks: (inside_tmux && OnPath::<()>::present("tmux"))
                 .then(Tmux::has_hyperlinks)
                 .transpose()?,
-            plugin: OnPath::found("claude").then(Plugin::listed).transpose()?,
-            extension: OnPath::found("code")
-                .then(Extension::listed_version)
-                .transpose()?,
+            plugin: OnPath::look("claude", Plugin::listed)?,
+            extension: OnPath::look("code", Extension::listed_version)?,
         })
     }
 
     fn plugin_version(&self) -> Option<&str> {
-        let plugin = self.plugin.as_ref()?.as_ref()?;
-        Some(&plugin.version)
+        self.plugin.found().map(|plugin| plugin.version.as_str())
     }
 
     fn extension_version(&self) -> Option<&str> {
-        self.extension.as_ref()?.as_deref()
+        self.extension.found().map(String::as_str)
     }
 }
 
@@ -207,7 +204,7 @@ pub fn doctor(dir: &Path) -> AppResult {
     let colored = io::stdout().is_terminal();
     let mut out = BufWriter::new(io::stdout().lock());
     writeln!(out, "Checking play-by-play's setup")?;
-    let healthy = OnPath::assessments(&facts)
+    let healthy = OnPath::<()>::assessments(&facts)
         .chain(LogFolder::assessments(&facts))
         .chain(Tmux::assessments(&facts))
         .chain(Plugin::assessments(&facts))

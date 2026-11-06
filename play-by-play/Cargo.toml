@@ -4,9 +4,21 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
+bytes = "1.12.1"
 indexmap = "2.14.2"
+prost = "0.14.4"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["io-util", "net"] }
+tokio-stream = { version = "0.1.19", default-features = false }
+tokio-util = { version = "0.7.20", default-features = false, features = ["codec"] }
 
 [lints]
 workspace = true
+
+[build-dependencies]
+prost-build = "0.14.4"
+protox = "0.10.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["macros", "rt", "net", "io-util"] }

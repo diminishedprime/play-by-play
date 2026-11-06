@@ -2,7 +2,7 @@ use std::process::Command;
 
 use crate::error::AppResult;
 
-use super::{Assessment, Check, Facts, Fix};
+use super::{Assessment, Check, Facts, Fix, OnPath};
 
 const ID: &str = "diminishedprime.play-by-play-vscode@";
 
@@ -25,14 +25,12 @@ impl Check for Extension {
     type Problem<'a> = ();
 
     fn assessments(facts: &Facts) -> impl Iterator<Item = Assessment<'_>> {
-        facts
-            .extension
-            .as_ref()
-            .map(|version| match version {
-                None => Self::failed("not installed", ()),
-                Some(_) => Self::passed("installed"),
-            })
-            .into_iter()
+        match &facts.extension {
+            OnPath::Unchecked => None,
+            OnPath::Missing => Some(Self::failed("not installed", ())),
+            OnPath::Found(_) => Some(Self::passed("installed")),
+        }
+        .into_iter()
     }
 
     fn suggested_fix<'a>((): ()) -> Fix<'a> {

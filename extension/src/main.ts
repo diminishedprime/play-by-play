@@ -1,8 +1,18 @@
-import { TerminalLocation, window, workspace } from "vscode";
+import {
+  commands,
+  type ExtensionContext,
+  TerminalLocation,
+  window,
+  workspace,
+} from "vscode";
+import { activate as activateExtension } from "#src/extension";
 import { Shell } from "#src/programs";
-import { start } from "#src/start";
 import { Vscode } from "#src/vscode";
 
-export async function activate() {
-  await start(new Vscode(window, workspace, TerminalLocation), new Shell());
+export async function activate(context: ExtensionContext) {
+  await activateExtension(
+    new Vscode(window, workspace, TerminalLocation, commands),
+    new Shell(),
+    context,
+  );
 }

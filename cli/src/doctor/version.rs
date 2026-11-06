@@ -1,8 +1,11 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write as _};
 
 use super::{Assessment, Check, Facts, Fix};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const MISMATCH: &str = "mismatch:";
+const LINE_START: &str = "\n    ";
+const SEPARATOR: &str = " - ";
 
 #[derive(Clone, Copy)]
 struct Installed<'a> {
@@ -10,10 +13,47 @@ struct Installed<'a> {
     version: &'a str,
 }
 
+impl Installed<'_> {
+    fn columns(&self) -> usize {
+        console::measure_text_width(self.version)
+    }
+
+    fn padding(&self, width: usize) -> usize {
+        width.saturating_sub(self.columns())
+    }
+}
+
 impl Display for Installed<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let width = f.width().unwrap_or_default();
-        write!(f, "{:<width$} - {}", self.version, self.name)
+        let padding = self.padding(f.width().unwrap_or_default());
+        write!(f, "{}{:padding$}{SEPARATOR}{}", self.version, "", self.name)
+    }
+}
+
+#[derive(Default)]
+struct Layout {
+    width: usize,
+    lines: usize,
+    text: usize,
+    columns: usize,
+}
+
+impl Layout {
+    fn of<'a>(installed: impl Iterator<Item = Installed<'a>>) -> Layout {
+        installed.fold(Layout::default(), |layout, piece| {
+            let columns = piece.columns();
+            Layout {
+                width: layout.width.max(columns),
+                lines: layout.lines + 1,
+                text: layout.text + piece.version.len() + piece.name.len(),
+                columns: layout.columns + columns,
+            }
+        })
+    }
+
+    fn capacity(&self) -> usize {
+        MISMATCH.len() + self.lines * (LINE_START.len() + SEPARATOR.len() + self.width) + self.text
+            - self.columns
     }
 }
 
@@ -42,15 +82,16 @@ impl Versions {
         if installed.clone().all(|piece| piece.version == VERSION) {
             return Self::passed(format!("all versions match at {VERSION}"));
         }
-        let width = installed
-            .clone()
-            .map(|piece| piece.version.len())
-            .max()
-            .unwrap_or_default();
-        let listed = installed
-            .map(|piece| format!("\n    {piece:width$}"))
-            .collect::<String>();
-        Self::failed(format!("mismatch:{listed}"), ())
+        let layout = Layout::of(installed.clone());
+        let width = layout.width;
+        let mut mismatch = String::with_capacity(layout.capacity());
+        mismatch.push_str(MISMATCH);
+        let mismatch = installed.fold(mismatch, |mut mismatch, piece| {
+            write!(mismatch, "{LINE_START}{piece:width$}")
+                .expect("a version line writes into a String");
+            mismatch
+        });
+        Self::failed(mismatch, ())
     }
 }
 

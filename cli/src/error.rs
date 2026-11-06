@@ -22,6 +22,13 @@ pub enum AppError {
     /// The viewer's terminal can't be asked its size.
     #[error(transparent)]
     Terminal(#[from] rustix::io::Errno),
+    /// A live program sent a message that isn't one of
+    /// [`play_by_play::proto`]'s.
+    #[error("a live program sent a message play-by-play can't read: {0}")]
+    Decode(#[from] prost::DecodeError),
+    /// zsh, which runs Claude's commands, isn't on the PATH.
+    #[error("zsh isn't on the PATH, so the command can't run")]
+    NoZsh,
     /// One of `doctor`'s checks failed.
     #[error("a check failed")]
     Unhealthy,

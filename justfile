@@ -13,6 +13,7 @@ fix: _deps
     pnpm --dir plugin exec prettier --write --prose-wrap always --ignore-path ../.gitignore --log-level error .
     pnpm --dir extension exec eslint --fix .
     pnpm --dir extension exec prettier --write --prose-wrap always --ignore-path ../.gitignore --log-level error .
+    pnpm exec prettier --write --log-level error 'scripts/*.mts'
 
 # Check formatting and lints
 check: _deps _plugin-icon
@@ -24,14 +25,27 @@ check: _deps _plugin-icon
         "claude plugin validate --strict plugin" \
         "pnpm --dir extension exec prettier --check --prose-wrap always --ignore-path ../.gitignore ." \
         "pnpm --dir extension exec tsc --noEmit" \
-        "pnpm --dir extension exec eslint ."
+        "pnpm --dir extension exec eslint ." \
+        "pnpm exec prettier --check 'scripts/*.mts'"
 
 # Run all tests
-test:
+test: _deps
     cargo test --workspace --exclude play-by-play-e2e
     just e2e test
     claude plugin test plugin
     pnpm --dir extension exec vitest run
+
+# Report code coverage.
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export CARGO_TARGET_DIR={{ justfile_directory() }}/target/llvm-cov-target
+    eval "$(cargo llvm-cov show-env --sh)"
+    cargo llvm-cov clean --workspace
+    cargo test --workspace --exclude play-by-play-e2e
+    just e2e test
+    cargo llvm-cov report --ignore-filename-regex '/e2e/' --json --summary-only --output-path target/coverage.json
+    cargo llvm-cov report --ignore-filename-regex '/e2e/'
 
 # Refresh Claude Code's types in plugin/.claude-plugin/types
 plugin-types:
@@ -50,6 +64,10 @@ uninstall:
     -cargo uninstall play-by-play-cli
     -claude plugin marketplace remove play-by-play
     -code --uninstall-extension diminishedprime.play-by-play-vscode
+
+install-hooks:
+    mkdir -p "$(git rev-parse --git-path hooks)"
+    ln -sf "{{ justfile_directory() }}/scripts/pre-commit" "$(git rev-parse --git-path hooks)/pre-commit"
 
 _deps:
     pnpm install --frozen-lockfile --loglevel error

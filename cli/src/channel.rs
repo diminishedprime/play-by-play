@@ -1,26 +1,34 @@
 //! The socket a command's program connects to, to claim the viewer's terminal and
 //! hear its width.
 
+use std::cell::Cell;
 use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::pin::pin;
 use std::process;
 
+use bytes::{Bytes, BytesMut};
 use notify::{Config, KqueueWatcher, RecursiveMode, Watcher};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use play_by_play::proto;
+use prost::Message as _;
+use tokio::io::AsyncWriteExt;
 use tokio::net::unix::WriteHalf;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
+use tokio_stream::StreamExt as _;
+use tokio_util::codec::{Encoder as _, FramedRead, LengthDelimitedCodec};
 
+use crate::drawn::Drawn;
 use crate::error::{AppError, AppResult};
 
-/// The socket `play-by-play run` offers one command, only while a viewer is
+/// The socket play-by-play offers one command, only while a viewer is
 /// watching; a command that never connects is left a plain command.
 pub struct Channel {
     path: PathBuf,
     listener: UnixListener,
     program: Option<UnixStream>,
+    columns: u16,
 }
 
 impl Channel {
@@ -36,6 +44,7 @@ impl Channel {
             path,
             listener,
             program: None,
+            columns: 0,
         })
     }
 
@@ -70,16 +79,18 @@ impl Channel {
             .program
             .as_mut()
             .expect("a program connected before hearing the width");
+        self.columns = columns;
         let sent = async {
-            program.write_all(&columns.to_ne_bytes()).await?;
+            program.write_all(&Channel::width(columns)?).await?;
             Ok(())
         };
         Channel::unless_gone(sent.await)
     }
 
-    /// Copies everything the program sends into `live` until it disconnects,
-    /// meanwhile sending it each width its follower records in `columns`,
-    /// rereading it on every change in the follower's `dir`.
+    /// Draws each of the program's [`proto::Lines`] into `live`, cut to the
+    /// width the program was last told, until it disconnects. Meanwhile sends
+    /// it each width its follower records in `columns`, rereading it on every
+    /// change in the follower's `dir`.
     ///
     /// # Errors
     ///
@@ -90,22 +101,22 @@ impl Channel {
     ///
     /// When no program has connected through [`Channel::accept`].
     pub async fn serve(&mut self, mut live: impl Write, dir: &Path, columns: &Path) -> AppResult {
-        let (mut reader, mut writer) = self
+        let width = Cell::new(self.columns);
+        let (reader, mut writer) = self
             .program
             .as_mut()
             .expect("a program connected before sending its view")
             .split();
         let mut relay = pin!(async {
-            let mut chunk = [0; 8192];
-            loop {
-                let read = reader.read(&mut chunk).await?;
-                if read == 0 {
-                    return Ok(());
-                }
-                live.write_all(&chunk[..read])?;
+            let mut messages = FramedRead::new(reader, LengthDelimitedCodec::new());
+            let mut drawn = Drawn::new(width.get());
+            while let Some(message) = messages.next().await {
+                let lines = proto::Lines::decode(message?)?;
+                drawn.draw(&mut live, &lines.lines, width.get())?;
             }
+            Ok(())
         });
-        let widths = async {
+        let sending = async {
             let (sender, mut changes) = mpsc::unbounded_channel();
             let mut watcher = KqueueWatcher::new(
                 move |change| {
@@ -114,19 +125,21 @@ impl Channel {
                 Config::default(),
             )?;
             watcher.watch(dir, RecursiveMode::NonRecursive)?;
-            let mut sent = Channel::send_recorded(&mut writer, columns, None).await?;
-            while let Some(change) = changes.recv().await {
+            let mut sent = Channel::send_recorded(&mut writer, columns, None, &width).await?;
+            loop {
+                let change = changes
+                    .recv()
+                    .await
+                    .expect("the watcher keeps its sender while serve runs");
                 change?;
-                sent = Channel::send_recorded(&mut writer, columns, sent).await?;
+                sent = Channel::send_recorded(&mut writer, columns, sent, &width).await?;
             }
-            Ok(())
         };
+        let mut widths = pin!(async { Channel::unless_gone(sending.await) });
         tokio::select! {
+            biased;
+            Err(error) = &mut widths => Err(error),
             relayed = &mut relay => relayed,
-            watched = widths => {
-                Channel::unless_gone(watched)?;
-                relay.await
-            }
         }
     }
 
@@ -148,17 +161,28 @@ impl Channel {
         writer: &mut WriteHalf<'_>,
         columns: &Path,
         sent: Option<u16>,
+        width: &Cell<u16>,
     ) -> AppResult<Option<u16>> {
         let recorded = fs::read_to_string(columns)
             .ok()
             .and_then(|recorded| recorded.parse::<u16>().ok());
         match recorded {
-            Some(width) if recorded != sent => {
-                writer.write_all(&width.to_ne_bytes()).await?;
+            Some(recorded_width) if recorded != sent => {
+                writer.write_all(&Channel::width(recorded_width)?).await?;
+                width.set(recorded_width);
                 Ok(recorded)
             }
             _ => Ok(sent),
         }
+    }
+
+    fn width(columns: u16) -> AppResult<BytesMut> {
+        let width = proto::Width {
+            columns: columns.into(),
+        };
+        let mut message = BytesMut::new();
+        LengthDelimitedCodec::new().encode(Bytes::from(width.encode_to_vec()), &mut message)?;
+        Ok(message)
     }
 }
 

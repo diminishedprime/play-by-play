@@ -3,6 +3,7 @@ use std::io;
 use std::num::NonZeroU16;
 use std::os::fd::OwnedFd;
 use std::path::Path;
+use std::process::ExitStatus;
 use std::time::Duration;
 
 use rustix::pty::{self, OpenptFlags};
@@ -39,14 +40,23 @@ impl Viewer {
     pub const BACKGROUND: &[u8] = b"\x1b]11;rgb:0000/2b2b/3636\x1b\\";
 
     pub fn start(dir: &Path, workspace: &Path) -> Viewer {
-        Viewer::running(dir, workspace, &["watch"], Viewer::COLUMNS)
+        let watch = Sut::in_terminal(dir, ["watch"]).within(workspace);
+        Viewer::running(watch, Viewer::COLUMNS)
+    }
+
+    pub fn start_for(dir: &Path, workspace: &Path, project: &Path) -> Viewer {
+        let watch = Sut::in_terminal(dir, ["watch"])
+            .within(workspace)
+            .project(project);
+        Viewer::running(watch, Viewer::COLUMNS)
     }
 
     pub fn follow(dir: &Path, workspace: &Path, pid: &str) -> Viewer {
-        Viewer::running(dir, workspace, &["follow", pid], Viewer::FOLLOWER_COLUMNS)
+        let follow = Sut::in_terminal(dir, ["follow", pid]).within(workspace);
+        Viewer::running(follow, Viewer::FOLLOWER_COLUMNS)
     }
 
-    fn running(dir: &Path, workspace: &Path, args: &[&str], columns: u16) -> Viewer {
+    fn running(sut: Sut, columns: u16) -> Viewer {
         let terminal =
             pty::openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).expect("a pseudo-terminal opens");
         pty::grantpt(&terminal).expect("the pseudo-terminal is granted");
@@ -58,7 +68,7 @@ impl Viewer {
             .open(name.to_str().expect("the pseudo-terminal's name is UTF-8"))
             .expect("the pseudo-terminal's screen opens");
         Viewer::size(&screen, columns);
-        let mut command = Sut::in_terminal(dir, args).within(workspace).into_command();
+        let mut command = sut.into_command();
         command.env("TERM", "xterm-256color");
         let watch = Spawned::new(
             &command,
@@ -110,7 +120,16 @@ impl Viewer {
     pub async fn close(mut self) {
         self.reader.abort();
         let _ = (&mut self.reader).await;
-        self.watch.kill().await;
+        let hung_up = time::timeout(Duration::from_secs(1), self.watch.exit()).await;
+        if hung_up.is_err() {
+            self.watch.kill().await;
+        }
+    }
+
+    pub async fn hang_up(mut self) -> ExitStatus {
+        self.reader.abort();
+        let _ = (&mut self.reader).await;
+        self.watch.exit().await
     }
 
     pub fn resize(&mut self, columns: u16) {

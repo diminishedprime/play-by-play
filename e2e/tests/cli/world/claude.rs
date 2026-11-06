@@ -125,7 +125,7 @@ impl Claude<'_> {
             .start()
     }
 
-    async fn noted(&self, kind: &str, input: &Value, result: &Value) -> Ran {
+    pub async fn noted(&self, kind: &str, input: &Value, result: &Value) -> Ran {
         let header = Sut::new(self.world.dir(), ["note", "header", kind])
             .project(self.world.workspace())
             .stdin(&input.to_string())

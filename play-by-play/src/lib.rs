@@ -1,18 +1,22 @@
 //! Lets a program show a live view of its progress to someone following Claude's
-//! commands with `play-by-play watch`, while Claude, CI and tests still get plain
-//! lines.
+//! commands with `play-by-play watch`. Its stdout still goes to Claude, CI and
+//! tests as usual.
 //!
-//! Implement [`Redraw`] for what the program shows, open a [`LiveView`], and
-//! render it whenever that changes. With nobody watching, only the plain lines
-//! print.
+//! Implement [`Board`] for what the program shows, open a [`Broadcast`], and
+//! render it whenever that changes.
 
+mod board;
+mod broadcast;
 pub mod env;
 mod error;
-mod live_view;
-mod redraw;
+/// The messages a program and play-by-play send each other over the
+/// socket.
+pub mod proto {
+    include!(concat!(env!("OUT_DIR"), "/play_by_play.v1.rs"));
+}
 mod screen;
 mod terminal;
 
+pub use board::{Board, Live};
+pub use broadcast::Broadcast;
 pub use error::{AppError, AppResult};
-pub use live_view::LiveView;
-pub use redraw::{Line, Redraw, Width};

@@ -138,7 +138,7 @@ impl Spawned {
         self.exit().await;
     }
 
-    async fn exit(&mut self) -> ExitStatus {
+    pub async fn exit(&mut self) -> ExitStatus {
         let pid = self.pid.expect("the child is still running");
         loop {
             if let Some(status) = Spawned::reaped(pid) {

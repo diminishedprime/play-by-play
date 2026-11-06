@@ -1,4 +1,4 @@
-//! The variables `play-by-play run` sets for a command, only while a viewer is
+//! The variables play-by-play sets for a command, only while a viewer is
 //! watching; with none set, nobody is watching.
 
 /// The socket a program connects to: connecting claims the viewer's terminal,

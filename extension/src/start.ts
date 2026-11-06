@@ -25,4 +25,5 @@ export async function start(vscode: Vscode, programs: Programs) {
     isTransient: true,
   });
   terminal.show(true);
+  return terminal;
 }

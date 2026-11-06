@@ -71,6 +71,10 @@ pub enum Isolation {
     Remote,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "it lives on the stack and is used once, so its size isn't worth boxing"
+)]
 #[derive(Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum AgentResult<'a> {

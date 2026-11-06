@@ -1,9 +1,10 @@
-//! The `play-by-play` command: `run` wraps each of Claude's commands, `watch`
+//! The `play-by-play` command: `-c` wraps each of Claude's commands, `watch`
 //! follows them.
 
 pub mod channel;
 pub mod cmd;
 pub mod doctor;
+pub mod drawn;
 pub mod error;
 pub mod log;
 pub mod markdown;
@@ -22,7 +23,7 @@ use crate::cmd::Cli;
 use crate::error::AppResult;
 use crate::log::Log;
 
-/// For `run`, the exit code is the wrapped command's own, so Claude sees whether
+/// For `-c`, the exit code is the wrapped command's own, so Claude sees whether
 /// its command failed rather than whether play-by-play did.
 ///
 /// # Errors

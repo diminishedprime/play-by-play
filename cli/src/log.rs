@@ -47,7 +47,7 @@ impl<'a> Log<'a> {
         self.file(&["log"])
     }
 
-    /// The log file, opened with append.
+    /// The log file, opened to read and append.
     ///
     /// # Errors
     ///
@@ -56,6 +56,7 @@ impl<'a> Log<'a> {
         fs::create_dir_all(self.dir)?;
         Ok(OpenOptions::new()
             .create(true)
+            .read(true)
             .append(true)
             .open(self.path())?)
     }

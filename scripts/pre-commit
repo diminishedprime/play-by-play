@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+parallel --tag --line-buffer --halt soon,fail=1 ::: "just check" "just test"

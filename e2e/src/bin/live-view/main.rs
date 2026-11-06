@@ -8,13 +8,15 @@ mod downloads;
 mod network;
 mod play_by_play;
 
-use ::play_by_play::LiveView;
+use ::play_by_play::Broadcast;
 
 use crate::downloader::Downloader;
 use crate::network::Network;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let view = LiveView::open().await.expect("the live view opens");
-    Downloader::new(view, Network::from_stdin()).run().await;
+    let broadcast = Broadcast::open().await.expect("the broadcast opens");
+    Downloader::new(broadcast, Network::from_stdin())
+        .run()
+        .await;
 }

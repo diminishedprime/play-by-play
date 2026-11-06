@@ -7,6 +7,10 @@ pub struct Download {
 pub struct Downloads(pub Vec<Download>);
 
 impl Downloads {
+    pub fn has(&self, file: &str) -> bool {
+        self.0.iter().any(|download| download.file == file)
+    }
+
     pub fn progress(&mut self, file: String, progress: String) {
         self.0.push(Download { file, progress });
     }

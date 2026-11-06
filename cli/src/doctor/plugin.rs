@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::error::AppResult;
 
-use super::{Assessment, Check, Facts, Fix};
+use super::{Assessment, Check, Facts, Fix, OnPath};
 
 const ID: &str = "play-by-play@play-by-play";
 
@@ -38,15 +38,13 @@ impl Check for Plugin {
     type Problem<'a> = Problem;
 
     fn assessments(facts: &Facts) -> impl Iterator<Item = Assessment<'_>> {
-        facts
-            .plugin
-            .as_ref()
-            .map(|listed| match listed {
-                None => Self::failed("not installed", Problem::NotInstalled),
-                Some(plugin) if plugin.enabled => Self::passed("installed and enabled"),
-                Some(_) => Self::failed("disabled", Problem::Disabled),
-            })
-            .into_iter()
+        match &facts.plugin {
+            OnPath::Unchecked => None,
+            OnPath::Missing => Some(Self::failed("not installed", Problem::NotInstalled)),
+            OnPath::Found(plugin) if plugin.enabled => Some(Self::passed("installed and enabled")),
+            OnPath::Found(_) => Some(Self::failed("disabled", Problem::Disabled)),
+        }
+        .into_iter()
     }
 
     fn suggested_fix<'a>(problem: Problem) -> Fix<'a> {

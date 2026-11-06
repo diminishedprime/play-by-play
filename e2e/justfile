@@ -1,6 +1,6 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-target := justfile_directory() / "target"
+target := env("CARGO_TARGET_DIR", justfile_directory() / "target")
 
 # Run the e2e tests against a debug build of play-by-play.
 test *args:

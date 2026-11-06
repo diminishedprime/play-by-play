@@ -1,18 +1,18 @@
-use ::play_by_play::LiveView;
+use ::play_by_play::Broadcast;
 
 use crate::downloads::Downloads;
 use crate::network::{Event, Network};
 
 pub struct Downloader {
-    view: LiveView<String>,
+    broadcast: Broadcast<String>,
     downloads: Downloads,
     network: Network,
 }
 
 impl Downloader {
-    pub fn new(view: LiveView<String>, network: Network) -> Downloader {
+    pub fn new(broadcast: Broadcast<String>, network: Network) -> Downloader {
         Downloader {
-            view,
+            broadcast,
             downloads: Downloads::default(),
             network,
         }
@@ -22,16 +22,26 @@ impl Downloader {
         loop {
             tokio::select! {
                 event = self.network.next() => match event {
-                    Some(Event::Progress { file, progress }) => self.downloads.progress(file, progress),
+                    Some(Event::Progress { file, progress }) => self.progress(file, progress),
                     Some(Event::Finished { file }) => self.downloads.finish(&file),
                     None => return,
                 },
-                resized = self.view.resized() => resized.expect("the viewer's width arrives"),
+                resized = self.broadcast.resized() => resized.expect("the viewer's width arrives"),
             }
-            self.view
+            self.broadcast
                 .render(&self.downloads)
                 .await
-                .expect("the live view renders");
+                .expect("the broadcast renders");
         }
+    }
+
+    fn progress(&mut self, file: String, progress: String) {
+        if !self.downloads.has(&file) {
+            println!("downloading {file}");
+        }
+        if progress == "100%" {
+            println!("downloaded {file}");
+        }
+        self.downloads.progress(file, progress);
     }
 }

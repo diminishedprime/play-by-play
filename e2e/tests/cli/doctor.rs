@@ -370,6 +370,42 @@ async fn checks_tmuxs_hyperlinks_inside_tmux() {
 }
 
 #[tokio::test]
+async fn fails_when_tmux_isnt_on_the_path_inside_tmux() {
+    let world = World::new();
+
+    world.installs("play-by-play");
+    world.installs("pbp");
+    world.has("zsh");
+    world.lacks("tmux");
+    world.claude_lists_plugin("play-by-play@play-by-play", "0.1.0", true);
+    world.code_lists_extension("diminishedprime.play-by-play-vscode@0.1.0");
+
+    world
+        .sut(["doctor"])
+        .only_fakes_on_path()
+        .inside_tmux()
+        .run_in_terminal()
+        .await
+        .exits(1)
+        .prints(&format!(
+            r"Checking play-by-play's setup
+{INDENT}{OK}{PATH} {BOLD}play-by-play{NORMAL}{END}
+{INDENT}{OK}{PATH} {BOLD}pbp{NORMAL}{END}
+{INDENT}{OK}{PATH} {BOLD}zsh{NORMAL}{END}
+{INDENT}{FAILED}{PATH} {BOLD}tmux{NORMAL} not on PATH
+{INDENT}{INDENT}{INDENT}Fix: install tmux{END}
+{INDENT}{OK}{PATH} {BOLD}claude{NORMAL}{END}
+{INDENT}{OK}{PATH} {BOLD}code{NORMAL}{END}
+{INDENT}{OK}{LOG} writable{END}
+{INDENT}{OK}{PLUGIN} installed and enabled{END}
+{INDENT}{OK}{EXTENSION} installed{END}
+{INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
+"
+        ));
+    world.close().await;
+}
+
+#[tokio::test]
 async fn warns_when_tmuxs_hyperlinks_are_off() {
     let world = World::new();
 

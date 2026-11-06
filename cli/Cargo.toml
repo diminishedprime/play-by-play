@@ -13,13 +13,16 @@ path = "src/bin/pbp.rs"
 
 [dependencies]
 bat = { version = "0.26.1", default-features = false, features = ["regex-fancy"] }
+bytes = "1.12.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 comrak = { version = "0.59.0", default-features = false }
+console = { version = "0.16.6", default-features = false, features = ["std", "ansi-parsing", "unicode-width"] }
 hex = "0.4.3"
 memchr = "2.8.3"
 memmap2 = "0.9.12"
 notify = { version = "8.2.1", features = ["macos_kqueue"] }
 play-by-play = { path = "../play-by-play" }
+prost = "0.14.4"
 rustix = { version = "1.1.6", features = ["process", "termios"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -29,6 +32,10 @@ textwrap = { version = "0.16.4", default-features = false, features = ["unicode-
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "process", "rt", "signal", "sync"] }
 tokio-stream = { version = "0.1.19", features = ["signal"] }
+tokio-util = { version = "0.7.20", default-features = false, features = ["codec"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

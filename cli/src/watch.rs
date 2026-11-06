@@ -3,7 +3,7 @@
 
 use std::fmt::Display;
 use std::fs::{self, File};
-use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -31,12 +31,12 @@ use crate::log::{CLEAR, Log};
 ///
 /// When the log's folder can't be made or watched, or the log can't be read.
 pub fn watch(log: &Log) -> AppResult {
-    log.append()?;
+    let file = log.append()?;
     fs::write(log.viewer_path(), process::id().to_string())?;
     runtime::Builder::new_current_thread()
         .enable_io()
         .build()?
-        .block_on(Follower::from(log).follow())
+        .block_on(Follower::from(log).follow(&file))
 }
 
 /// Follows the live view of the program under the `run` with `pid`, waiting for
@@ -88,26 +88,24 @@ impl From<PathBuf> for Tail {
 impl Tail {
     async fn follow(mut self, columns: Columns) -> AppResult {
         let resizes = Wake::resizes()?;
+        let hangups = Wake::hangups()?;
         columns.record()?;
-        let changes = Wake::changes(&self.path)?;
+        let changes = Wake::changes(&self.path);
         let mut stdout = io::stdout();
         self.print(&mut stdout)?;
-        let mut wakes = changes.merge(resizes);
+        let mut wakes = changes.merge(resizes).merge(hangups);
         while let Some(wake) = wakes.next().await {
             match wake {
                 Wake::Change => self.print(&mut stdout)?,
                 Wake::Resize => columns.record()?,
+                Wake::HangUp => break,
             }
         }
         Ok(())
     }
 
     fn print(&mut self, out: &mut impl Write) -> AppResult {
-        let mut file = match File::open(&self.path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
+        let mut file = File::open(&self.path)?;
         file.seek(SeekFrom::Start(self.from))?;
         self.from += io::copy(&mut file, out)?;
         out.flush()?;
@@ -163,31 +161,33 @@ impl From<&Log<'_>> for Follower {
 }
 
 impl Follower {
-    async fn follow(mut self) -> AppResult {
+    async fn follow(mut self, file: &File) -> AppResult {
         let resizes = Wake::resizes()?;
+        let hangups = Wake::hangups()?;
         self.columns.record()?;
-        self.record_theme()?;
-        let changes = Wake::changes(&self.tail.path)?;
-        self.tail.from = self.last_screen()?;
+        self.record_theme();
+        let changes = Wake::changes(&self.tail.path);
+        self.tail.from = Follower::last_screen(file)?;
         let mut stdout = io::stdout();
-        if fs::metadata(&self.tail.path)?.len() == 0 {
+        if file.metadata()?.len() == 0 {
             writeln!(stdout, "play-by-play is watching this workspace.")?;
             writeln!(stdout, "Claude's commands show up here as they run.")?;
         }
         self.tail.print(&mut stdout)?;
-        let mut wakes = changes.merge(resizes);
+        let mut wakes = changes.merge(resizes).merge(hangups);
         while let Some(wake) = wakes.next().await {
             match wake {
                 Wake::Change => self.tail.print(&mut stdout)?,
                 Wake::Resize => self.columns.record()?,
+                Wake::HangUp => break,
             }
         }
         Ok(())
     }
 
-    fn record_theme(&self) -> AppResult {
+    fn record_theme(&self) {
         let Ok(background) = terminal_colorsaurus::background_color(QueryOptions::default()) else {
-            return Ok(());
+            return;
         };
         let assets = HighlightingAssets::from_binary();
         let closest = assets.themes().min_by_key(|name| {
@@ -209,19 +209,13 @@ impl Follower {
                 })
         });
         if let Some(name) = closest {
-            self.theme.write(name)?;
+            let _ = self.theme.write(name);
         }
-        Ok(())
     }
 
-    fn last_screen(&self) -> AppResult<u64> {
-        let file = match File::open(&self.tail.path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(0),
-            Err(error) => return Err(error.into()),
-        };
+    fn last_screen(file: &File) -> AppResult<u64> {
         // SAFETY: play-by-play only ever appends to the log; a truncation while it's mapped could still crash this read.
-        let log = unsafe { Mmap::map(&file)? };
+        let log = unsafe { Mmap::map(file)? };
         let start = memmem::rfind(&log, CLEAR.as_bytes()).unwrap_or(0);
         Ok(u64::try_from(start).expect("a log's length fits in a u64"))
     }
@@ -230,26 +224,34 @@ impl Follower {
 enum Wake {
     Change,
     Resize,
+    HangUp,
 }
 
 impl Wake {
-    fn changes(path: &Path) -> AppResult<Changes> {
+    fn changes(path: &Path) -> Changes {
         let (sender, events) = mpsc::unbounded_channel();
         let mut watcher = KqueueWatcher::new(
             move |change| {
                 let _ = sender.send(change);
             },
             Config::default(),
-        )?;
-        watcher.watch(path, RecursiveMode::NonRecursive)?;
-        Ok(Changes {
+        )
+        .expect("kqueue starts, or there's no log to follow");
+        watcher
+            .watch(path, RecursiveMode::NonRecursive)
+            .expect("kqueue watches the log, or there's no log to follow");
+        Changes {
             _watcher: watcher,
             events,
-        })
+        }
     }
 
     fn resizes() -> AppResult<impl Stream<Item = Wake>> {
         Ok(SignalStream::new(signal(SignalKind::window_change())?).map(|()| Wake::Resize))
+    }
+
+    fn hangups() -> AppResult<impl Stream<Item = Wake>> {
+        Ok(SignalStream::new(signal(SignalKind::hangup())?).map(|()| Wake::HangUp))
     }
 }
 

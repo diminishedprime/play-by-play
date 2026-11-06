@@ -30,7 +30,7 @@ impl Check for LogFolder {
         })
     }
 
-    fn suggested_fix<'a>(log_folder: Self::Problem<'a>) -> Fix<'a> {
+    fn suggested_fix(log_folder: Self::Problem<'_>) -> Fix<'_> {
         Fix::MakeWritable(log_folder)
     }
 }

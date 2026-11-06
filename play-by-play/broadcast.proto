@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package play_by_play.v1;
+
+// The viewer's terminal width, sent when the program connects and whenever it
+// changes.
+message Width {
+  // How many columns the viewer's terminal has.
+  uint32 columns = 1;
+}
+
+// A program's board as it is now, sent on every render.
+message Lines {
+  // Each line's text, in the order it's shown.
+  repeated string lines = 1;
+}

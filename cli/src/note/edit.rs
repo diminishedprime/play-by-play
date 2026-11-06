@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::error::AppResult;
 use crate::log::Screen;
-use crate::note::patch::{GitDiff, Hunk, Hunks};
+use crate::note::patch::{GitDiff, Hunk, UnifiedDiff};
 use crate::note::{Body, Title};
 use crate::text::Text;
 
@@ -54,7 +54,7 @@ impl Body for EditResult<'_> {
     fn body(&self, out: &mut impl Write, screen: &Screen) -> AppResult {
         let mut printer = PrettyPrinter::new();
         printer
-            .input(Input::from_reader(Hunks::new(&self.structured_patch)))
+            .input(Input::from_reader(UnifiedDiff::new(&self.structured_patch)))
             .language("Diff")
             .colored_output(true);
         if let Some(theme) = &screen.theme {

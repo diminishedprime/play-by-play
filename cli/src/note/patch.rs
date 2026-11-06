@@ -20,7 +20,7 @@ pub struct Hunk<'a> {
 }
 
 /// `hunks` as a unified diff, read a piece at a time without building it.
-pub struct Hunks<'h, 'a> {
+pub struct UnifiedDiff<'h, 'a> {
     hunks: slice::Iter<'h, Hunk<'a>>,
     lines: slice::Iter<'h, Cow<'a, str>>,
     header: [u8; 96],
@@ -34,10 +34,10 @@ enum Piece<'h> {
     Text(&'h [u8]),
 }
 
-impl<'h, 'a> Hunks<'h, 'a> {
+impl<'h, 'a> UnifiedDiff<'h, 'a> {
     #[must_use]
-    pub fn new(hunks: &'h [Hunk<'a>]) -> Hunks<'h, 'a> {
-        Hunks {
+    pub fn new(hunks: &'h [Hunk<'a>]) -> UnifiedDiff<'h, 'a> {
+        UnifiedDiff {
             hunks: hunks.iter(),
             lines: [].iter(),
             header: [0; 96],
@@ -54,20 +54,20 @@ impl<'h, 'a> Hunks<'h, 'a> {
         }
     }
 
-    fn advance(&mut self) -> io::Result<bool> {
+    fn advance(&mut self) -> bool {
         self.at = 0;
         if self.newline {
             self.newline = false;
             self.piece = Piece::Text(b"\n");
-            return Ok(true);
+            return true;
         }
         if let Some(line) = self.lines.next() {
             self.piece = Piece::Text(line.as_bytes());
             self.newline = true;
-            return Ok(true);
+            return true;
         }
         let Some(hunk) = self.hunks.next() else {
-            return Ok(false);
+            return false;
         };
         let unused = {
             let mut rest = &mut self.header[..];
@@ -75,19 +75,20 @@ impl<'h, 'a> Hunks<'h, 'a> {
                 rest,
                 "@@ -{},{} +{},{} @@",
                 hunk.old_start, hunk.old_lines, hunk.new_start, hunk.new_lines
-            )?;
+            )
+            .expect("a hunk header's four u64s fit in its 96 bytes");
             rest.len()
         };
         self.piece = Piece::Header(self.header.len() - unused);
         self.lines = hunk.lines.iter();
-        Ok(true)
+        true
     }
 }
 
-impl Read for Hunks<'_, '_> {
+impl Read for UnifiedDiff<'_, '_> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         while self.at == self.current().len() {
-            if !self.advance()? {
+            if !self.advance() {
                 return Ok(0);
             }
         }

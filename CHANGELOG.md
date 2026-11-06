@@ -1,3 +1,20 @@
+## 1.0.0-alpha.14 (2026-11-06)
+
+### Features
+
+- add a Play-by-Play: Start command that reopens the viewer
+- cut a live view's lines by the columns their characters take
+- cut a live view's lines by the columns they show, skipping escape codes
+- keep watching when the viewer's theme can't be recorded
+- run just check and just test as a pre-commit hook installed by just install-hooks
+- say zsh isn't on the PATH when a command's shell can't start
+- send a program's board to play-by-play run as protobuf lines and draw it there
+- stop watch and follow cleanly when their terminal closes and measure them in just coverage
+
+### Bug Fixes
+
+- skip the pre-commit hook for release commits and format the release scripts in just fix
+
 ## 1.0.0-alpha.13 (2026-11-06)
 
 ### Bug Fixes

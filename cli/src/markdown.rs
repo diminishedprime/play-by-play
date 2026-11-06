@@ -77,12 +77,12 @@ impl<'s, W: Write> Markdown<'s, W> {
 
     fn paragraph<'a>(&mut self, node: &'a AstNode<'a>, first: &Piece, rest: &Piece) -> AppResult {
         let inlines = Inline::collect(node);
-        let text = Words::of(&inlines);
+        let paragraph = Paragraph::of(&inlines);
         let width = self.columns - f64::from(u16::try_from(first.text.len()).unwrap_or(u16::MAX));
-        let lines = wrap_algorithms::wrap_first_fit(&text.words, &[width]);
+        let lines = wrap_algorithms::wrap_first_fit(&paragraph.words, &[width]);
         for (at, line) in lines.into_iter().enumerate() {
             write!(self.out, "{}", if at == 0 { first } else { rest })?;
-            self.line(&text.pieces, line)?;
+            self.line(&paragraph.pieces, line)?;
         }
         Ok(())
     }
@@ -111,7 +111,7 @@ enum Style {
 }
 
 enum Inline<'a> {
-    Text(Ref<'a, Ast>, Style),
+    Text(Ref<'a, str>, Style),
     Space,
 }
 
@@ -132,10 +132,21 @@ impl<'a> Inline<'a> {
 
     fn collect_into(node: &'a AstNode<'a>, style: Style, inlines: &mut Vec<Inline<'a>>) {
         for child in node.children() {
-            let ast = child.data();
+            let ast = match Ref::filter_map(child.data(), |ast| ast.value.text()) {
+                Ok(text) => {
+                    inlines.push(Inline::Text(text, style));
+                    continue;
+                }
+                Err(ast) => ast,
+            };
+            let ast = match Ref::filter_map(ast, Inline::code) {
+                Ok(code) => {
+                    inlines.push(Inline::Text(code, Style::Code));
+                    continue;
+                }
+                Err(ast) => ast,
+            };
             match ast.value {
-                NodeValue::Text(_) => inlines.push(Inline::Text(ast, style)),
-                NodeValue::Code(_) => inlines.push(Inline::Text(ast, Style::Code)),
                 NodeValue::SoftBreak | NodeValue::LineBreak => inlines.push(Inline::Space),
                 NodeValue::Strong => {
                     drop(ast);
@@ -149,38 +160,35 @@ impl<'a> Inline<'a> {
         }
     }
 
-    fn text(&self) -> Option<(&str, Style)> {
-        let Inline::Text(ast, style) = self else {
-            return None;
-        };
-        match &ast.value {
-            NodeValue::Text(text) => Some((text.as_ref(), *style)),
-            NodeValue::Code(code) => Some((code.literal.as_str(), *style)),
-            _ => None,
+    fn code(ast: &Ast) -> Option<&str> {
+        if let NodeValue::Code(code) = &ast.value {
+            Some(&code.literal)
+        } else {
+            None
         }
     }
 }
 
-struct Words<'a> {
+struct Paragraph<'a> {
     pieces: Vec<Piece<'a>>,
     words: Vec<Word>,
     space: bool,
 }
 
-impl<'a> Words<'a> {
-    fn of(inlines: &'a [Inline<'a>]) -> Words<'a> {
-        let mut words = Words {
+impl<'a> Paragraph<'a> {
+    fn of(inlines: &'a [Inline<'a>]) -> Paragraph<'a> {
+        let mut paragraph = Paragraph {
             pieces: Vec::new(),
             words: Vec::new(),
             space: true,
         };
         for inline in inlines {
-            match inline.text() {
-                Some((text, style)) => words.push(text, style),
-                None => words.space = true,
+            match inline {
+                Inline::Text(text, style) => paragraph.push(text, *style),
+                Inline::Space => paragraph.space = true,
             }
         }
-        words
+        paragraph
     }
 
     fn push(&mut self, text: &'a str, style: Style) {

@@ -36,6 +36,12 @@ async function release(dryRun: boolean, cwd: string) {
     { ci: false, dryRun },
     {
       cwd,
+      env: {
+        ...process.env,
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "core.hooksPath",
+        GIT_CONFIG_VALUE_0: "/dev/null",
+      },
       stdout: new Writable({
         write(_chunk, _encoding, done) {
           done();

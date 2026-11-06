@@ -4,7 +4,10 @@
 mod doctor;
 mod world;
 
+use std::fs;
 use std::path::Path;
+
+use serde_json::json;
 
 use world::{Style, Viewer, World};
 
@@ -196,6 +199,36 @@ async fn shows_the_viewer_the_file_claude_read() {
 }
 
 #[tokio::test]
+async fn fails_a_command_when_zsh_isnt_on_the_path() {
+    let world = World::unwatched();
+
+    world
+        .sut(["-c", "echo hi"])
+        .only_fakes_on_path()
+        .run()
+        .await
+        .exits(1)
+        .prints("")
+        .prints_error("play-by-play: zsh isn't on the PATH, so the command can't run\n");
+    world.close().await;
+}
+
+#[tokio::test]
+async fn runs_a_command_through_pbp() {
+    let world = World::unwatched();
+
+    world.installs("pbp");
+
+    world
+        .claude()
+        .runs("pbp -c 'echo hi'")
+        .await
+        .succeeds()
+        .prints("hi\n");
+    world.close().await;
+}
+
+#[tokio::test]
 async fn shows_the_viewer_a_command_claude_ran() {
     let mut world = World::new();
 
@@ -274,6 +307,256 @@ plain code
 }
 
 #[tokio::test]
+async fn shows_a_read_images_size() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "read",
+            &json!({ "file_path": "/cat.png" }),
+            &json!({
+                "type": "image",
+                "file": { "base64": "", "type": "image/png", "originalSize": 2048 },
+            }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&["read: /cat.png", "an image, 2048 bytes", "read: end"])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn shows_a_read_notebooks_cell_count() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "read",
+            &json!({ "file_path": "/plot.ipynb" }),
+            &json!({
+                "type": "notebook",
+                "file": { "filePath": "/plot.ipynb", "cells": [{}, {}, {}] },
+            }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&["read: /plot.ipynb", "a notebook, 3 cells", "read: end"])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn shows_a_read_pdfs_size() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "read",
+            &json!({ "file_path": "/paper.pdf" }),
+            &json!({
+                "type": "pdf",
+                "file": { "filePath": "/paper.pdf", "base64": "", "originalSize": 4096 },
+            }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&["read: /paper.pdf", "a PDF, 4096 bytes", "read: end"])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn shows_where_a_pdf_read_as_pages_went() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "read",
+            &json!({ "file_path": "/paper.pdf", "pages": "1-3" }),
+            &json!({
+                "type": "parts",
+                "file": {
+                    "filePath": "/paper.pdf",
+                    "originalSize": 4096,
+                    "count": 3,
+                    "outputDir": "/tmp/pages",
+                },
+            }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&[
+            "read: /paper.pdf",
+            "a PDF, as 3 page images in /tmp/pages",
+            "read: end",
+        ])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn says_a_reread_file_is_unchanged() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "read",
+            &json!({ "file_path": "/notes.md" }),
+            &json!({ "type": "file_unchanged", "file": { "filePath": "/notes.md" } }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&[
+            "read: /notes.md",
+            "unchanged since it was last read",
+            "read: end",
+        ])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn shows_where_a_background_agent_writes() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "agent",
+            &json!({ "description": "explore", "prompt": "look around" }),
+            &json!({
+                "status": "async_launched",
+                "agentId": "a1",
+                "description": "explore",
+                "prompt": "look around",
+                "outputFile": "/tmp/a1.output",
+            }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&[
+            "agent: explore",
+            "prompt:",
+            "look around",
+            "running in the background: /tmp/a1.output",
+            "agent: end",
+        ])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn shows_where_a_cloud_agent_runs() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "agent",
+            &json!({ "description": "explore", "prompt": "look around" }),
+            &json!({
+                "status": "remote_launched",
+                "taskId": "t1",
+                "sessionUrl": "https://claude.ai/code/t1",
+                "description": "explore",
+                "prompt": "look around",
+                "outputFile": "/tmp/t1.output",
+            }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&[
+            "agent: explore",
+            "prompt:",
+            "look around",
+            "running in the cloud: https://claude.ai/code/t1",
+            "agent: end",
+        ])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn shows_a_result_of_an_unknown_kind_as_it_came() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "agent",
+            &json!({ "description": "explore", "prompt": "look around" }),
+            &json!({ "status": "teleported" }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&[
+            "agent: explore",
+            "prompt:",
+            "look around",
+            r#"{"status":"teleported"}"#,
+            "agent: end",
+        ])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn joins_a_fetched_pages_broken_lines_and_emphasis() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .fetches(
+            "https://example.com",
+            "what does it say",
+            "It says\nto take *care*.",
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&[
+            "fetch: https://example.com",
+            "prompt: what does it say",
+            "It says to take care.",
+            "fetch: end",
+        ])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
 async fn formats_a_fetched_pages_markdown() {
     let mut world = World::new();
 
@@ -336,6 +619,24 @@ async fn picks_the_code_theme_closest_to_the_viewers_background() {
     let world = World::new();
 
     world.viewer_theme_becomes("Solarized (dark)").await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn keeps_watching_when_it_cant_record_its_theme() {
+    let mut world = World::unwatched();
+
+    fs::create_dir(world.log_folder().join("notes_75326a409771.theme"))
+        .expect("the theme's path is taken");
+    world.reopen_viewer_for(Path::new("/Users/me/programming/notes"));
+
+    world
+        .viewer()
+        .sees(&[
+            "play-by-play is watching this workspace.",
+            "Claude's commands show up here as they run.",
+        ])
+        .await;
     world.close().await;
 }
 
@@ -419,6 +720,37 @@ async fn gives_each_tool_call_the_next_color() {
 }
 
 #[tokio::test]
+async fn cycles_back_to_the_first_color_after_the_last() {
+    let mut world = World::new();
+
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    world.claude().runs("echo 1").await.succeeds();
+    world.claude().runs("echo 2").await.succeeds();
+    world.claude().runs("echo 3").await.succeeds();
+    world
+        .claude()
+        .reads("/notes.md", "fourth\n")
+        .await
+        .succeeds();
+    world.claude().runs("echo 5").await.succeeds();
+    world.claude().runs("echo 6").await.succeeds();
+    world.viewer().sees(&["$ echo 6", "6", "exit: 0"]).await;
+
+    assert_eq!(
+        world.viewer().colors(),
+        [
+            Style::Green,
+            Style::Yellow,
+            Style::Blue,
+            Style::Magenta,
+            Style::Cyan,
+            Style::Green,
+        ]
+    );
+    world.close().await;
+}
+
+#[tokio::test]
 async fn shows_a_failed_commands_exit_in_red() {
     let mut world = World::new();
 
@@ -467,6 +799,37 @@ async fn offers_no_socket_while_nobody_watches() {
 }
 
 #[tokio::test]
+async fn stops_watching_when_its_terminal_closes() {
+    let mut world = World::new();
+
+    world
+        .viewer()
+        .sees(&[
+            "play-by-play is watching this workspace.",
+            "Claude's commands show up here as they run.",
+        ])
+        .await;
+    let exited = world.viewer_hangs_up().await;
+
+    assert_eq!(exited.code(), Some(0));
+    world.close().await;
+}
+
+#[tokio::test]
+async fn stops_following_when_its_terminal_closes() {
+    let mut world = World::new();
+
+    world.follow("4242");
+    world
+        .follower_width_becomes("4242", Viewer::FOLLOWER_COLUMNS)
+        .await;
+    let exited = world.follower_hangs_up().await;
+
+    assert_eq!(exited.code(), Some(0));
+    world.close().await;
+}
+
+#[tokio::test]
 async fn offers_no_socket_once_the_viewer_has_gone() {
     let mut world = World::new();
 
@@ -482,115 +845,22 @@ async fn offers_no_socket_once_the_viewer_has_gone() {
 }
 
 #[tokio::test]
-async fn tells_a_program_that_connects_the_viewers_width() {
-    let world = World::new();
-
-    world.viewer_width_becomes(Viewer::COLUMNS).await;
-
-    world
-        .claude()
-        .runs(r#"zmodload zsh/net/socket zsh/system && zsocket "$PLAY_BY_PLAY_SOCKET" && sysread -t 1 -c 2 -i "$REPLY" columns && print -rn -- "$columns" | xxd -p"#).await
-        .succeeds()
-        .prints("4d00\n");
-    world.close().await;
-}
-
-#[tokio::test]
-async fn finishes_a_command_whose_program_leaves_before_hearing_the_width() {
-    let world = World::new();
-
-    world.viewer_width_becomes(Viewer::COLUMNS).await;
-
-    world
-        .claude()
-        .runs(r#"zmodload zsh/net/socket && zsocket "$PLAY_BY_PLAY_SOCKET" && exec {REPLY}>&- && print done"#)
-        .await
-        .succeeds()
-        .prints("done\n");
-    world.close().await;
-}
-
-#[tokio::test]
 async fn keeps_a_live_programs_lines_out_of_the_viewer() {
     let mut world = World::new();
-    let claims = r#"zmodload zsh/net/socket zsh/system && zsocket "$PLAY_BY_PLAY_SOCKET" && sysread -t 1 -c 2 -i "$REPLY" && print live"#;
 
+    world.installs("live-view");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     world
         .claude()
-        .runs(claims)
+        .runs("print 'a one' | live-view")
         .await
         .succeeds()
-        .prints("live\n");
+        .prints("downloading a\n");
 
     world
         .viewer()
-        .sees(&[&format!("$ {claims}"), "exit: 0"])
+        .sees(&["$ print 'a one' | live-view", "exit: 0"])
         .await;
-    world.close().await;
-}
-
-#[tokio::test]
-async fn shows_a_live_programs_view_to_its_follower() {
-    let mut world = World::new();
-
-    world.viewer_width_becomes(Viewer::COLUMNS).await;
-    let ran = world
-        .claude()
-        .runs(r#"zmodload zsh/net/socket zsh/system && zsocket "$PLAY_BY_PLAY_SOCKET" && fd=$REPLY && sysread -t 1 -c 2 -i "$fd" columns && print -rn -- hello >&"$fd" && print -r -- "$PPID""#).await;
-    let pid = ran.succeeds().printed().trim();
-
-    world.follow(pid);
-    world.follower().sees(&["hello"]).await;
-    world.close().await;
-}
-
-#[tokio::test]
-async fn keeps_showing_a_live_programs_view_as_it_changes() {
-    let mut world = World::new();
-
-    world.viewer_width_becomes(Viewer::COLUMNS).await;
-    let running = world
-        .claude()
-        .starts(r#"zmodload zsh/net/socket zsh/system && zsocket "$PLAY_BY_PLAY_SOCKET" && fd=$REPLY && sysread -t 1 -c 2 -i "$fd" columns && print -rn -- first >&"$fd" && print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print -rn -- second >&"$fd""#);
-    let pid = world.workspace_file("pid").await;
-    world.follow(pid.trim());
-
-    world.follower().sees(&["first"]).await;
-    running.finishes().await.succeeds();
-    world.follower().sees(&["firstsecond"]).await;
-    world.close().await;
-}
-
-#[tokio::test]
-async fn tells_a_live_program_its_followers_width() {
-    let mut world = World::new();
-
-    world.viewer_width_becomes(Viewer::COLUMNS).await;
-    let running = world
-        .claude()
-        .starts(r#"zmodload zsh/net/socket zsh/system && zsocket "$PLAY_BY_PLAY_SOCKET" && fd=$REPLY && sysread -t 1 -c 2 -i "$fd" first && print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && sysread -t 2 -c 2 -i "$fd" second && print -rn -- "$first$second" | xxd -p"#);
-    let pid = world.workspace_file("pid").await;
-    world.follow(pid.trim());
-
-    running.finishes().await.succeeds().prints("4d002600\n");
-    world.close().await;
-}
-
-#[tokio::test]
-async fn tells_a_live_program_when_its_follower_resizes() {
-    let mut world = World::new();
-
-    world.viewer_width_becomes(Viewer::COLUMNS).await;
-    let running = world
-        .claude()
-        .starts(r#"zmodload zsh/net/socket zsh/system && zsocket "$PLAY_BY_PLAY_SOCKET" && fd=$REPLY && sysread -t 1 -c 2 -i "$fd" first && print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && sysread -t 2 -c 2 -i "$fd" second && print > followed.tmp && mv followed.tmp followed && sysread -t 2 -c 2 -i "$fd" third && print -rn -- "$first$second$third" | xxd -p"#);
-    let pid = world.workspace_file("pid").await;
-    world.follow(pid.trim());
-    world.workspace_file("followed").await;
-    world.follower().resize(50);
-
-    running.finishes().await.succeeds().prints("4d0026003200\n");
     world.close().await;
 }
 
@@ -628,7 +898,7 @@ async fn shows_the_viewer_a_commands_errors_and_keeps_them_on_stderr() {
 }
 
 #[tokio::test]
-async fn prints_a_programs_rows_as_plain_lines_while_nobody_watches() {
+async fn narrates_to_claude_while_nobody_watches() {
     let world = World::unwatched();
 
     world.installs("live-view");
@@ -636,21 +906,6 @@ async fn prints_a_programs_rows_as_plain_lines_while_nobody_watches() {
     world
         .claude()
         .runs(r"printf 'a one\nb two\n' | live-view")
-        .await
-        .succeeds()
-        .prints("downloading a\ndownloading b\n");
-    world.close().await;
-}
-
-#[tokio::test]
-async fn prints_a_programs_row_again_only_when_it_changes() {
-    let world = World::unwatched();
-
-    world.installs("live-view");
-
-    world
-        .claude()
-        .runs(r"printf 'a one\na uno\nb two\n' | live-view")
         .await
         .succeeds()
         .prints("downloading a\ndownloading b\n");
@@ -714,26 +969,28 @@ async fn recuts_a_programs_rows_when_its_follower_opens() {
 }
 
 #[tokio::test]
-async fn keeps_printing_a_programs_rows_once_its_terminal_goes() {
-    let world = World::unwatched();
+async fn recuts_a_programs_rows_when_its_follower_resizes() {
+    let mut world = World::new();
+    let row = "0123456789".repeat(10);
 
     world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world.claude().starts(&format!(
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && {{ print 'a {row}'; read -r }} | live-view"#
+    ));
+    let pid = world.workspace_file("pid").await;
 
+    world.follow(pid.trim());
     world
-        .claude()
-        .runs(
-            r#"zmodload zsh/net/socket zsh/system && zsocket -l fake.socket && listener=$REPLY && {
-    zsocket -a "$listener" && fd=$REPLY
-    printf '\x4d\x00' >&"$fd"
-    print 'a one'
-    sysread -t 1 -i "$fd" frame
-    exec {fd}>&-
-    print 'b two'
-} | PLAY_BY_PLAY_SOCKET=fake.socket live-view"#,
-        )
-        .await
-        .succeeds()
-        .prints("downloading a\ndownloading b\n");
+        .follower()
+        .sees(&[" 0123456789012345678901234567890123456"])
+        .await;
+    world.follower().resize(50);
+    world
+        .follower()
+        .sees(&[" 0123456789012345678901234567890123456789012345678"])
+        .await;
+    running.finishes().await.succeeds();
     world.close().await;
 }
 
@@ -851,5 +1108,51 @@ async fn cuts_a_programs_rows_to_the_viewers_width() {
         .follower()
         .sees(&[" 0123456789012345678901234567890123456789012345678901234567890123456789012345"])
         .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn cuts_wide_characters_by_the_columns_they_take() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer().resize(7);
+    world.viewer_width_becomes(7).await;
+    let ran = world
+        .claude()
+        .runs(r#"print -r -- "$PPID" && print 'a 表表表表表' | live-view"#)
+        .await;
+    let pid = ran
+        .succeeds()
+        .printed()
+        .lines()
+        .next()
+        .expect("the command printed run's pid");
+
+    world.follow(pid);
+    world.follower().sees(&[" 表表表"]).await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn cuts_colored_rows_by_the_columns_they_show() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer().resize(7);
+    world.viewer_width_becomes(7).await;
+    let ran = world
+        .claude()
+        .runs(r#"print -r -- "$PPID" && print 'a \e[32m0123456789\e[0m' | live-view"#)
+        .await;
+    let pid = ran
+        .succeeds()
+        .printed()
+        .lines()
+        .next()
+        .expect("the command printed run's pid");
+
+    world.follow(pid);
+    world.follower().sees(&[" 012345"]).await;
     world.close().await;
 }
