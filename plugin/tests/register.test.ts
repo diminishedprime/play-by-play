@@ -128,6 +128,16 @@ test("Claude is told the person is watching when a session starts", async ($, on
   ]);
 });
 
+test("Claude is told the person is watching even before play-by-play's own start runs", async ($, on) => {
+  engine(on, { binary: true });
+
+  const started = await $.classic.SessionStart({ source: "startup" });
+
+  expect(started.additionalContext).toEqual([
+    "Watched live through play-by-play.",
+  ]);
+});
+
 test("Claude is told the person is watching again after /clear", async ($, on) => {
   engine(on, { binary: true });
 

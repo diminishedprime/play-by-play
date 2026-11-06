@@ -5,8 +5,6 @@ import type {
   Register,
 } from "claude-code";
 
-let installed = false;
-
 const kinds = {
   Read: "read",
   Write: "write",
@@ -16,13 +14,26 @@ const kinds = {
   Agent: "agent",
 } as const;
 
+let installCheck: Promise<boolean> | undefined;
+
+function isInstalled($: EngineInterface): Promise<boolean> {
+  installCheck ??= binaryRuns($);
+  return installCheck;
+}
+
+async function binaryRuns($: EngineInterface): Promise<boolean> {
+  try {
+    await $.process.run(["play-by-play", "--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const register: Register = (on) => {
   on("session.start", async ($, e, next) => {
-    try {
-      await $.process.run(["play-by-play", "--version"]);
-      installed = true;
-    } catch {
-      installed = false;
+    const installed = await isInstalled($);
+    if (!installed) {
       $.ui.log(
         "play-by-play is off: the play-by-play binary isn't on the PATH; run `just install` in its repo",
       );
@@ -35,7 +46,10 @@ export const register: Register = (on) => {
     { source: ["startup", "clear", "compact"] },
     async ($, e, next) => {
       const started = await next(e);
-      if (!installed) return started;
+      const installed = await isInstalled($);
+      if (!installed) {
+        return started;
+      }
       const text = await $.fs.read(`${$.plugin.root}/context/play-by-play.md`);
       return {
         ...started,
@@ -49,13 +63,18 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  on("tool.call", { tool: "Bash" }, ($, e, next) =>
-    installed ? next({ ...e, command: wrapped(e.command) }) : next(e),
-  ).catch(failed);
+  on("tool.call", { tool: "Bash" }, async ($, e, next) => {
+    const installed = await isInstalled($);
+    if (!installed) {
+      return next(e);
+    }
+    return next({ ...e, command: wrapped(e.command) });
+  }).catch(failed);
 
   on("tool.check", { tool: "Bash" }, async ($, e, next) => {
     const verdict = await next(e);
     const { command } = e.input as BuiltinToolInputs["Bash"];
+    const installed = await isInstalled($);
     if (!installed || verdict.hook || !command.startsWith("pbp -c '")) {
       return verdict;
     }
@@ -85,7 +104,10 @@ async function noted<
   E extends { tool: keyof typeof kinds },
   R extends { result?: unknown },
 >($: EngineInterface, e: E, next: (e: E) => Promise<R>): Promise<R> {
-  if (!installed) return next(e);
+  const installed = await isInstalled($);
+  if (!installed) {
+    return next(e);
+  }
   const kind = kinds[e.tool];
   const header = await $.process.run(["play-by-play", "note", "header", kind], {
     stdin: JSON.stringify(e),

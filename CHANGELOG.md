@@ -1,3 +1,9 @@
+## 1.0.0-alpha.13 (2026-11-06)
+
+### Bug Fixes
+
+- tell Claude about play-by-play even when its session start runs late
+
 ## 1.0.0-alpha.12 (2026-11-06)
 
 ### Features
