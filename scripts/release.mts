@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import { mkdtempDisposable, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
+import { json } from "node:stream/consumers";
 import { promisify } from "node:util";
 import { format, resolveConfig } from "prettier";
 import type { PrepareContext, PublishContext } from "semantic-release";
@@ -10,6 +14,7 @@ import { glob } from "tinyglobby";
 const GIT_SUFFIX = /\.git$/;
 const GITHUB_REPO = "diminishedprime/play-by-play";
 const GH_REPO_FLAGS = ["--repo", GITHUB_REPO];
+const LAB_MIRROR = "mirrored/play-by-play";
 
 const exec = promisify(execFile);
 
@@ -20,6 +25,11 @@ async function git(...args: string[]) {
 
 async function gh(...args: string[]) {
   const { stdout } = await exec("gh", args);
+  return stdout.trim();
+}
+
+async function tea(...args: string[]) {
+  const { stdout } = await exec("tea", args);
   return stdout.trim();
 }
 
@@ -85,6 +95,57 @@ async function publishToGithub(tag: string, notes: string, prerelease: boolean) 
   return gh("release", "create", tag, ...GH_REPO_FLAGS, "--title", tag, "--notes", notes, ...flags);
 }
 
+async function labMirrorClone() {
+  const { stdout } = await exec("lab-root");
+  return join(stdout.trim(), "library", LAB_MIRROR);
+}
+
+function labAddress() {
+  const lab = Object.values(networkInterfaces())
+    .flat()
+    .find((info) => info?.family === "IPv4" && info.address.startsWith("10."));
+  if (lab === undefined) {
+    throw new Error("no 10.0.0.0/8 address for Gitea to deliver the mirror's webhook to");
+  }
+  return lab.address;
+}
+
+async function listenForTag(tag: string) {
+  const server = createServer(async (request, response) => {
+    const { ref } = (await json(request)) as { ref?: string };
+    response.end();
+    if (ref === tag || ref === `refs/tags/${tag}`) {
+      server.emit("mirrored");
+    }
+  });
+  server.listen(0);
+  await once(server, "listening");
+  return server;
+}
+
+async function addMirrorHook(url: string) {
+  const config = { url, content_type: "json" };
+  const body = { type: "gitea", active: true, events: ["create", "push"], config };
+  const created = await tea("api", `/repos/${LAB_MIRROR}/hooks`, "-d", JSON.stringify(body));
+  const { id } = JSON.parse(created) as { id: number };
+  return {
+    [Symbol.asyncDispose]: async () => {
+      await tea("api", "-X", "DELETE", `/repos/${LAB_MIRROR}/hooks/${id}`);
+    },
+  };
+}
+
+async function syncLabMirror(tag: string) {
+  await using server = await listenForTag(tag);
+  const { port } = server.address() as AddressInfo;
+  const address = labAddress();
+  await using _hook = await addMirrorHook(`http://${address}:${port}/`);
+  const mirrored = once(server, "mirrored", { signal: AbortSignal.timeout(30_000) });
+  await tea("api", "-X", "POST", `/repos/${LAB_MIRROR}/mirror-sync`);
+  await mirrored;
+  await git("-C", await labMirrorClone(), "pull", "--ff-only", "--quiet");
+}
+
 async function setPluginVersion(cwd: string, version: string) {
   const path = join(cwd, "plugin", ".claude-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(path, "utf8")) as object;
@@ -130,5 +191,6 @@ export async function publish(_pluginConfig: unknown, { nextRelease, branch }: P
   await rewriteForGithub(worktree.path, gitea, github);
   await commitAndPush(worktree.path, version, tag);
   const url = await publishToGithub(tag, notes, branch.prerelease !== undefined);
+  await syncLabMirror(tag);
   return { name: tag, url };
 }

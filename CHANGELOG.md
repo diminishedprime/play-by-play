@@ -1,3 +1,9 @@
+## 1.0.0-alpha.12 (2026-11-06)
+
+### Features
+
+- give the Claude plugin its icon and keep the lab mirror in step with each release
+
 ## 1.0.0-alpha.11 (2026-11-06)
 
 ### Features

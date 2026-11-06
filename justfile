@@ -15,7 +15,7 @@ fix: _deps
     pnpm --dir extension exec prettier --write --prose-wrap always --ignore-path ../.gitignore --log-level error .
 
 # Check formatting and lints
-check: _deps
+check: _deps _plugin-icon
     parallel --tag --line-buffer --halt soon,fail=1 ::: \
         "cargo fmt --all --check" \
         "cargo clippy --workspace --all-targets -- -D warnings" \
@@ -38,7 +38,7 @@ plugin-types:
     CLAUDE_CODE_PLUGIN_DIR_WATCH=1 claude -p --plugin-dir plugin "Reply with ok." > /dev/null
 
 # Install the play-by-play binary, the Claude plugin, and the VS Code extension
-install: _deps
+install: _deps _plugin-icon
     cargo install --path cli --locked
     -claude plugin marketplace remove play-by-play
     claude plugin install play-by-play --marketplace "$PWD"
@@ -54,6 +54,9 @@ uninstall:
 _deps:
     pnpm install --frozen-lockfile --loglevel error
     [ -d plugin/.claude-plugin/types ] || just plugin-types
+
+_plugin-icon:
+    sips -s format png -z 1024 1024 extension/assets/football.svg --out plugin/.claude-plugin/icon.png
 
 # Prepare a release
 [arg("dry_run", long="dry-run", value="--dry-run")]

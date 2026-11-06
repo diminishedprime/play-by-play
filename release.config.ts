@@ -30,6 +30,7 @@ export default {
           "CHANGELOG.md",
           "package.json",
           "Cargo.lock",
+          "Cargo.toml",
           "*/Cargo.toml",
           "extension/package.json",
           "plugin/.claude-plugin/plugin.json",

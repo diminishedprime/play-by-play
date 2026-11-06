@@ -1,6 +1,7 @@
 /target
 node_modules
 /plugin/.claude-plugin/types
+/plugin/.claude-plugin/icon.png
 /extension/dist
 /extension/*.vsix
 /extension/LICENSE
