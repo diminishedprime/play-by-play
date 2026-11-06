@@ -1,33 +1,52 @@
 use std::fs::{File as StdFile, OpenOptions};
-use std::iter;
-use std::os::unix::process::CommandExt;
+use std::io;
+use std::num::NonZeroU16;
+use std::os::fd::OwnedFd;
 use std::path::Path;
 use std::time::Duration;
 
-use rustix::process;
 use rustix::pty::{self, OpenptFlags};
 use rustix::termios::{self, Winsize};
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{Child, Command};
+use tokio::io::Interest;
+use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::task::JoinHandle;
 use tokio::time;
 
+use super::spawn::{Spawned, Stdio};
 use super::style::Style;
 use super::sut::Sut;
 
 pub struct Viewer {
-    _watch: Child,
+    watch: Spawned,
+    reader: JoinHandle<()>,
     output: UnboundedReceiver<Vec<u8>>,
     screen: StdFile,
     seen: Vec<u8>,
+    shown: vt100::Parser,
+}
+
+impl Drop for Viewer {
+    fn drop(&mut self) {
+        self.reader.abort();
+    }
 }
 
 impl Viewer {
+    pub const ROWS: u16 = 24;
     pub const COLUMNS: u16 = 77;
+    pub const FOLLOWER_COLUMNS: u16 = 38;
     pub const BACKGROUND: &[u8] = b"\x1b]11;rgb:0000/2b2b/3636\x1b\\";
 
     pub fn start(dir: &Path, workspace: &Path) -> Viewer {
+        Viewer::running(dir, workspace, &["watch"], Viewer::COLUMNS)
+    }
+
+    pub fn follow(dir: &Path, workspace: &Path, pid: &str) -> Viewer {
+        Viewer::running(dir, workspace, &["follow", pid], Viewer::FOLLOWER_COLUMNS)
+    }
+
+    fn running(dir: &Path, workspace: &Path, args: &[&str], columns: u16) -> Viewer {
         let terminal =
             pty::openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).expect("a pseudo-terminal opens");
         pty::grantpt(&terminal).expect("the pseudo-terminal is granted");
@@ -38,53 +57,45 @@ impl Viewer {
             .write(true)
             .open(name.to_str().expect("the pseudo-terminal's name is UTF-8"))
             .expect("the pseudo-terminal's screen opens");
-        Viewer::size(&screen, Viewer::COLUMNS);
-        let mut command = Sut::new(dir, ["watch"]).within(workspace).into_command();
+        Viewer::size(&screen, columns);
+        let mut command = Sut::in_terminal(dir, args).within(workspace).into_command();
         command.env("TERM", "xterm-256color");
-        let controlling = screen.try_clone().expect("the screen is shared");
-        unsafe {
-            command.pre_exec(move || {
-                process::setsid()?;
-                process::ioctl_tiocsctty(&controlling)?;
-                Ok(())
-            });
-        }
-        let watch = Command::from(command)
-            .stdin(screen.try_clone().expect("the screen is shared"))
-            .stdout(screen.try_clone().expect("the screen is shared"))
-            .stderr(screen.try_clone().expect("the screen is shared"))
-            .kill_on_drop(true)
-            .spawn()
-            .expect("watch starts");
-        let answers = File::from_std(
-            terminal
-                .try_clone()
-                .expect("the pseudo-terminal is shared")
-                .into(),
+        let watch = Spawned::new(
+            &command,
+            [
+                Stdio::Fd(screen.try_clone().expect("the screen is shared").into()),
+                Stdio::Fd(screen.try_clone().expect("the screen is shared").into()),
+                Stdio::Fd(screen.try_clone().expect("the screen is shared").into()),
+            ],
         );
+        rustix::io::ioctl_fionbio(&terminal, true).expect("the pseudo-terminal stops blocking");
+        let terminal =
+            unsafe { AsyncFd::register(terminal) }.expect("the pseudo-terminal can be awaited");
         let (sender, output) = mpsc::unbounded_channel();
-        tokio::spawn(Viewer::answer(
-            File::from_std(terminal.into()),
-            answers,
-            sender,
-        ));
         Viewer {
-            _watch: watch,
+            watch,
+            reader: tokio::spawn(Viewer::answer(terminal, sender)),
             output,
             screen,
             seen: Vec::new(),
+            shown: vt100::Parser::new(Viewer::rows(), Viewer::columns(columns), 0),
         }
     }
 
-    async fn answer(mut terminal: File, mut answers: File, output: UnboundedSender<Vec<u8>>) {
+    async fn answer(terminal: AsyncFd<OwnedFd>, output: UnboundedSender<Vec<u8>>) {
         let mut chunk = [0; 4096];
-        while let Ok(read @ 1..) = terminal.read(&mut chunk).await {
+        while let Ok(read @ 1..) = terminal
+            .async_io(Interest::READABLE, |fd| {
+                rustix::io::read(fd, &mut chunk).map_err(io::Error::from)
+            })
+            .await
+        {
             let bytes = &chunk[..read];
             if Viewer::asks(bytes, b"\x1b]11;?") {
-                let _ = answers.write_all(Viewer::BACKGROUND).await;
+                let _ = rustix::io::write(terminal.get_ref(), Viewer::BACKGROUND);
             }
             if Viewer::asks(bytes, b"\x1b[c") {
-                let _ = answers.write_all(b"\x1b[?62;22c").await;
+                let _ = rustix::io::write(terminal.get_ref(), b"\x1b[?62;22c");
             }
             if output.send(bytes.to_vec()).is_err() {
                 return;
@@ -96,15 +107,31 @@ impl Viewer {
         bytes.windows(query.len()).any(|window| window == query)
     }
 
-    pub fn resize(&self, columns: u16) {
+    pub async fn close(mut self) {
+        self.reader.abort();
+        let _ = (&mut self.reader).await;
+        self.watch.kill().await;
+    }
+
+    pub fn resize(&mut self, columns: u16) {
         Viewer::size(&self.screen, columns);
+        self.shown
+            .set_size(Viewer::rows(), Viewer::columns(columns));
+    }
+
+    fn rows() -> NonZeroU16 {
+        NonZeroU16::new(Viewer::ROWS).expect("the screen has rows")
+    }
+
+    fn columns(columns: u16) -> NonZeroU16 {
+        NonZeroU16::new(columns).expect("the screen has columns")
     }
 
     fn size(screen: &StdFile, columns: u16) {
         termios::tcsetwinsize(
             screen,
             Winsize {
-                ws_row: 24,
+                ws_row: Viewer::ROWS,
                 ws_col: columns,
                 ws_xpixel: 0,
                 ws_ypixel: 0,
@@ -126,7 +153,10 @@ impl Viewer {
     async fn watch_for(&mut self, expected: &[&str]) {
         while self.screen_lines() != expected {
             match self.output.recv().await {
-                Some(bytes) => self.seen.extend_from_slice(&bytes),
+                Some(bytes) => {
+                    self.shown.process(&bytes);
+                    self.seen.extend_from_slice(&bytes);
+                }
                 None => return,
             }
         }
@@ -170,29 +200,11 @@ impl Viewer {
     }
 
     fn screen_lines(&self) -> Vec<String> {
-        let seen = String::from_utf8_lossy(&self.seen);
-        let screen = seen
-            .rsplit_once("\x1b[H\x1b[2J")
-            .map_or(seen.as_ref(), |(_, screen)| screen);
-        Viewer::without_escapes(screen)
+        self.shown
+            .screen()
+            .contents()
             .lines()
             .map(str::to_owned)
-            .collect()
-    }
-
-    fn without_escapes(screen: &str) -> String {
-        let mut chunks = screen.split('\x1b');
-        let first = chunks.next().unwrap_or_default();
-        iter::once(first)
-            .chain(chunks.map(|chunk| {
-                if let Some(style) = chunk.strip_prefix('[') {
-                    style
-                        .split_once(|c: char| c.is_ascii_alphabetic())
-                        .map_or("", |(_, text)| text)
-                } else {
-                    chunk.strip_prefix('\\').unwrap_or_default()
-                }
-            }))
             .collect()
     }
 }

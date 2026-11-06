@@ -60,6 +60,11 @@ pub enum Command {
         #[arg(long)]
         tmux: bool,
     },
+    /// Follows a live program's view, for the terminal opened for it.
+    Follow {
+        /// The pid of the `run` the program is live under.
+        pid: u32,
+    },
     /// Checks that play-by-play is set up to work.
     Doctor,
     /// Shows the viewer a tool call that isn't a command.
@@ -83,6 +88,8 @@ pub enum Action {
     Watch,
     /// Follow the workspace's log inside its tmux session.
     WatchInTmux,
+    /// Follow a live program's view, by its `run`'s pid.
+    Follow(u32),
     /// Check play-by-play's setup.
     Doctor,
     /// Show a tool call's header.
@@ -98,6 +105,7 @@ impl From<Command> for Action {
             Command::Unwrap => Action::Unwrap,
             Command::Watch { tmux: false } => Action::Watch,
             Command::Watch { tmux: true } => Action::WatchInTmux,
+            Command::Follow { pid } => Action::Follow(pid),
             Command::Doctor => Action::Doctor,
             Command::Note {
                 phase: NotePhase::Header { kind },

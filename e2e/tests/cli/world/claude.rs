@@ -15,13 +15,11 @@ impl<'a> From<&'a World> for Claude<'a> {
 }
 
 impl Claude<'_> {
-    #[track_caller]
-    pub fn reads(&self, path: &str, content: &str) {
-        self.reads_from(path, content, 1);
+    pub async fn reads(&self, path: &str, content: &str) -> Ran {
+        self.reads_from(path, content, 1).await
     }
 
-    #[track_caller]
-    pub fn reads_from(&self, path: &str, content: &str, start: usize) {
+    pub async fn reads_from(&self, path: &str, content: &str, start: usize) -> Ran {
         let lines = content.lines().count();
         let input = json!({ "file_path": path });
         let result = json!({
@@ -34,11 +32,10 @@ impl Claude<'_> {
                 "totalLines": start - 1 + lines,
             },
         });
-        self.noted("read", &input, &result);
+        self.noted("read", &input, &result).await
     }
 
-    #[track_caller]
-    pub fn writes(&self, path: &str, content: &str) {
+    pub async fn writes(&self, path: &str, content: &str) -> Ran {
         let input = json!({ "file_path": path, "content": content });
         let result = json!({
             "type": "create",
@@ -47,11 +44,10 @@ impl Claude<'_> {
             "structuredPatch": [],
             "originalFile": null,
         });
-        self.noted("write", &input, &result);
+        self.noted("write", &input, &result).await
     }
 
-    #[track_caller]
-    pub fn asks_agent(&self, prompt: &str, answer: &str) {
+    pub async fn asks_agent(&self, prompt: &str, answer: &str) -> Ran {
         let input = json!({ "description": "explore", "prompt": prompt });
         let result = json!({
             "status": "completed",
@@ -63,11 +59,10 @@ impl Claude<'_> {
             "usage": { "input_tokens": 0, "output_tokens": 0 },
             "prompt": prompt,
         });
-        self.noted("agent", &input, &result);
+        self.noted("agent", &input, &result).await
     }
 
-    #[track_caller]
-    pub fn edits(&self, path: &str, lines: &[&str]) {
+    pub async fn edits(&self, path: &str, lines: &[&str]) -> Ran {
         let input = json!({ "file_path": path, "old_string": "", "new_string": "" });
         let removed = lines.iter().filter(|line| !line.starts_with('+')).count();
         let added = lines.iter().filter(|line| !line.starts_with('-')).count();
@@ -85,11 +80,10 @@ impl Claude<'_> {
             "userModified": false,
             "replaceAll": false,
         });
-        self.noted("edit", &input, &result);
+        self.noted("edit", &input, &result).await
     }
 
-    #[track_caller]
-    pub fn searches(&self, query: &str, hits: &[(&str, &str)], summary: &str) {
+    pub async fn searches(&self, query: &str, hits: &[(&str, &str)], summary: &str) -> Ran {
         let input = json!({ "query": query, "mode": "standard" });
         let content = hits
             .iter()
@@ -100,11 +94,10 @@ impl Claude<'_> {
             "results": [{ "tool_use_id": "s1", "content": content }, summary],
             "durationSeconds": 0,
         });
-        self.noted("search", &input, &result);
+        self.noted("search", &input, &result).await
     }
 
-    #[track_caller]
-    pub fn fetches(&self, url: &str, prompt: &str, result: &str) {
+    pub async fn fetches(&self, url: &str, prompt: &str, result: &str) -> Ran {
         let input = json!({ "url": url, "prompt": prompt });
         let output = json!({
             "bytes": result.len(),
@@ -114,14 +107,15 @@ impl Claude<'_> {
             "durationMs": 0,
             "url": url,
         });
-        self.noted("fetch", &input, &output);
+        self.noted("fetch", &input, &output).await
     }
 
-    pub fn runs(&self, command: &str) -> Ran {
+    pub async fn runs(&self, command: &str) -> Ran {
         Sut::new(self.world.dir(), ["-c", command])
             .project(self.world.workspace())
             .within(self.world.workspace())
             .run()
+            .await
     }
 
     pub fn starts(&self, command: &str) -> Running {
@@ -131,17 +125,17 @@ impl Claude<'_> {
             .start()
     }
 
-    #[track_caller]
-    fn noted(&self, kind: &str, input: &Value, result: &Value) {
+    async fn noted(&self, kind: &str, input: &Value, result: &Value) -> Ran {
         let header = Sut::new(self.world.dir(), ["note", "header", kind])
             .project(self.world.workspace())
             .stdin(&input.to_string())
-            .run();
+            .run()
+            .await;
         let color = header.succeeds().printed().trim();
         Sut::new(self.world.dir(), ["note", "result", "--color", color, kind])
             .project(self.world.workspace())
             .stdin(&result.to_string())
             .run()
-            .succeeds();
+            .await
     }
 }

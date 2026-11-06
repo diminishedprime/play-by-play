@@ -29,6 +29,7 @@ async fn passes_when_everything_is_set_up() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -43,6 +44,7 @@ async fn passes_when_everything_is_set_up() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -59,6 +61,7 @@ async fn leaves_out_color_outside_a_terminal() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run()
+        .await
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -73,6 +76,7 @@ async fn leaves_out_color_outside_a_terminal() {
 {INDENT}✅  Version: all versions match at 0.1.0
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -90,6 +94,7 @@ async fn fails_when_cargos_bin_isnt_on_the_path() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -105,6 +110,7 @@ async fn fails_when_cargos_bin_isnt_on_the_path() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -120,6 +126,7 @@ async fn fails_when_play_by_play_isnt_on_the_path() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -135,6 +142,7 @@ async fn fails_when_play_by_play_isnt_on_the_path() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -150,6 +158,7 @@ async fn fails_when_pbp_isnt_on_the_path() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -165,6 +174,7 @@ async fn fails_when_pbp_isnt_on_the_path() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -180,6 +190,7 @@ async fn fails_when_zsh_isnt_on_the_path() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -195,6 +206,7 @@ async fn fails_when_zsh_isnt_on_the_path() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -210,6 +222,7 @@ async fn skips_the_plugin_when_claude_isnt_on_the_path() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -223,6 +236,7 @@ async fn skips_the_plugin_when_claude_isnt_on_the_path() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -238,6 +252,7 @@ async fn skips_vs_code_when_code_isnt_on_the_path() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -251,6 +266,7 @@ async fn skips_vs_code_when_code_isnt_on_the_path() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -265,6 +281,7 @@ async fn leaves_out_the_versions_when_theres_nothing_to_compare() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -276,6 +293,7 @@ async fn leaves_out_the_versions_when_theres_nothing_to_compare() {
 {INDENT}{OK}{LOG} writable{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -294,6 +312,7 @@ async fn fails_when_the_log_folder_isnt_writable() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -309,6 +328,7 @@ async fn fails_when_the_log_folder_isnt_writable() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -329,6 +349,7 @@ async fn checks_tmuxs_hyperlinks_inside_tmux() {
         .only_fakes_on_path()
         .inside_tmux()
         .run_in_terminal()
+        .await
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -345,6 +366,7 @@ async fn checks_tmuxs_hyperlinks_inside_tmux() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -363,6 +385,7 @@ async fn warns_when_tmuxs_hyperlinks_are_off() {
         .only_fakes_on_path()
         .inside_tmux()
         .run_in_terminal()
+        .await
         .succeeds()
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -380,6 +403,7 @@ async fn warns_when_tmuxs_hyperlinks_are_off() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -396,6 +420,7 @@ async fn fails_when_the_plugin_isnt_installed() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -411,6 +436,7 @@ async fn fails_when_the_plugin_isnt_installed() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -427,6 +453,7 @@ async fn fails_when_the_plugin_is_disabled() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -442,6 +469,7 @@ async fn fails_when_the_plugin_is_disabled() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -458,6 +486,7 @@ async fn fails_when_the_extension_isnt_installed() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -473,6 +502,7 @@ async fn fails_when_the_extension_isnt_installed() {
 {INDENT}{OK}{VERSION} all versions match at 0.1.0{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -489,6 +519,7 @@ async fn fails_when_the_versions_differ() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -507,6 +538,7 @@ async fn fails_when_the_versions_differ() {
 {INDENT}{INDENT}{INDENT}Fix: run `just install` from the play-by-play repo{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -522,6 +554,7 @@ async fn fails_when_the_plugins_version_differs_without_vs_code() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -538,6 +571,7 @@ async fn fails_when_the_plugins_version_differs_without_vs_code() {
 {INDENT}{INDENT}{INDENT}Fix: run `just install` from the play-by-play repo{END}
 "
         ));
+    world.close().await;
 }
 
 #[tokio::test]
@@ -553,6 +587,7 @@ async fn fails_when_the_extensions_version_differs_without_claude() {
         .sut(["doctor"])
         .only_fakes_on_path()
         .run_in_terminal()
+        .await
         .exits(1)
         .prints(&format!(
             r"Checking play-by-play's setup
@@ -569,4 +604,5 @@ async fn fails_when_the_extensions_version_differs_without_claude() {
 {INDENT}{INDENT}{INDENT}Fix: run `just install` from the play-by-play repo{END}
 "
         ));
+    world.close().await;
 }

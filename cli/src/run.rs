@@ -1,17 +1,24 @@
 //! What every Bash command Claude runs goes through: the plugin rewrites each one
 //! to `play-by-play run --command '<command>'`.
 
-use std::fs::File;
+use std::cell::Cell;
+use std::fs::{self, File};
+use std::future;
 use std::io::{self, Read, Write};
-use std::process::Stdio;
+use std::path::Path;
+use std::pin::pin;
+use std::process::{self, Stdio};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use play_by_play::env;
 use tokio::process::Command;
 use tokio::runtime;
 
+use crate::channel::Channel;
 use crate::error::{AppError, AppResult};
 use crate::log::{Color, Log, RESET, Screen};
 use crate::note::{Header, Title};
+use crate::router::Router;
+use crate::viewer::Viewer;
 
 /// Runs `command` in zsh, writing to `log`, and routes its output to Claude and
 /// the viewer.
@@ -24,8 +31,12 @@ use crate::note::{Header, Title};
 /// # Panics
 ///
 /// Never: both streams are piped before they're taken.
-pub fn run(log: &Log, command: &str) -> AppResult {
+pub fn run(log: &Log, dir: &Path, command: &str) -> AppResult {
     let color = log.next_color()?;
+    let viewer = Viewer::watching(log)?;
+    let live = log.live_path(process::id());
+    let follower = log.follower_dir(process::id());
+    let columns = log.follower_columns_path(process::id());
     let mut log = log.append()?;
     Prompt(command).header(&mut log, color, &Screen::UNBOUNDED)?;
     let mut shell = Command::new("zsh");
@@ -37,7 +48,9 @@ pub fn run(log: &Log, command: &str) -> AppResult {
     let code = runtime::Builder::new_current_thread()
         .enable_all()
         .build()?
-        .block_on(Tee::run(shell, &log))?;
+        .block_on(Tee::run(
+            shell, &log, dir, viewer, &live, &follower, &columns,
+        ))?;
     // The longest exit line is 19 bytes.
     // color 5 + "exit: " 6 + code 3 + reset 4 + newline 1
     let mut line = [0; 32];
@@ -83,34 +96,58 @@ impl Title for Prompt<'_> {
 struct Tee;
 
 impl Tee {
-    async fn run(mut shell: Command, log: &File) -> AppResult<u8> {
+    async fn run(
+        mut shell: Command,
+        log: &File,
+        dir: &Path,
+        viewer: Option<Viewer>,
+        live: &Path,
+        follower: &Path,
+        columns: &Path,
+    ) -> AppResult<u8> {
+        let mut watched = viewer
+            .map(|viewer| Channel::open(dir).map(|channel| (channel, viewer)))
+            .transpose()?;
+        if let Some((channel, _)) = &watched {
+            shell.env(env::SOCKET, channel.path());
+        }
         let mut child = shell.spawn()?;
         let stdout = child.stdout.take().expect("the command's stdout is piped");
         let stderr = child.stderr.take().expect("the command's stderr is piped");
-        tokio::try_join!(
-            Tee::copy(stdout, io::stdout(), log.try_clone()?),
-            Tee::copy(stderr, io::stderr(), log.try_clone()?),
-        )?;
+        let claimed = Cell::new(false);
+        let mut copies = pin!(async {
+            tokio::try_join!(
+                Router::new(log.try_clone()?, &claimed).copy(stdout, io::stdout()),
+                Router::new(log.try_clone()?, &claimed).copy(stderr, io::stderr()),
+            )
+        });
+        let mut claim = pin!(async {
+            match &mut watched {
+                Some((channel, viewer)) => {
+                    channel.accept().await?;
+                    claimed.set(true);
+                    channel.send_columns(viewer.columns()).await?;
+                    fs::create_dir_all(follower)?;
+                    channel.serve(File::create(live)?, follower, columns).await
+                }
+                None => future::pending().await,
+            }
+        });
+        tokio::select! {
+            copied = &mut copies => {
+                copied?;
+                if claimed.get() {
+                    claim.await?;
+                }
+            }
+            relayed = &mut claim => {
+                relayed?;
+                copies.await?;
+            }
+        };
         let status = child.wait().await?;
         Ok(status
             .code()
             .map_or(u8::MAX, |code| u8::try_from(code).unwrap_or(u8::MAX)))
-    }
-
-    async fn copy(
-        mut from: impl AsyncRead + Unpin,
-        mut claude: impl Write,
-        mut log: impl Write,
-    ) -> AppResult {
-        let mut chunk = [0; 8192];
-        loop {
-            let read = from.read(&mut chunk).await?;
-            if read == 0 {
-                return Ok(());
-            }
-            claude.write_all(&chunk[..read])?;
-            claude.flush()?;
-            log.write_all(&chunk[..read])?;
-        }
     }
 }

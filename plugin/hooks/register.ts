@@ -30,14 +30,23 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  on("prompt.context", async ($, e, next) => {
-    const context = await next(e);
-    if (!installed) return context;
-    const text = await $.fs.read(`${$.plugin.root}/context/play-by-play.md`);
-    return {
-      ...context,
-      blocks: [...context.blocks, { name: "playByPlay", text }],
-    };
+  on(
+    "classic.SessionStart",
+    { source: ["startup", "clear", "compact"] },
+    async ($, e, next) => {
+      const started = await next(e);
+      if (!installed) return started;
+      const text = await $.fs.read(`${$.plugin.root}/context/play-by-play.md`);
+      return {
+        ...started,
+        additionalContext: [...(started.additionalContext ?? []), text],
+      };
+    },
+  ).catch(($, e, next) => {
+    $.ui.log(
+      `play-by-play couldn't give claude the 411: ${next.error.message ?? next.error.kind}`,
+    );
+    return next(e);
   });
 
   on("tool.call", { tool: "Bash" }, ($, e, next) =>

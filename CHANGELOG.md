@@ -1,3 +1,33 @@
+## 1.0.0-alpha.11 (2026-11-06)
+
+### Features
+
+- clear a row its program drops from the live view
+- draw a live view's lines at the viewer's width
+- draw a live view's rows in the follower's terminal
+- keep printing a live view's rows once its terminal goes
+- let a program claim the viewer and follow its live view in its own terminal
+- narrate each live view line to Claude only when it changes
+- print a live view's changed rows as plain lines
+- redraw a live view when its follower's width arrives
+
+### Bug Fixes
+
+- keep a command running when its program leaves before hearing the viewer's width
+- keep a live program's command running when it disconnects before its follower's width
+- keep one workspace version so merging main into alpha can't conflict on it
+- keep the e2e world's file watches from missing changes
+- let a live view's later row for a key overwrite the earlier one
+- merge main into alpha over release version bumps and skip the push on dry runs
+- read the e2e world's terminals without threads and close them in order
+- record the viewer's theme by rename
+- spawn the e2e world's programs without leaking descriptors
+- tell Claude about play-by-play at session start instead of in every prompt's context
+
+### Performance Improvements
+
+- optimize dependencies in the dev profile
+
 ## 1.0.0-alpha.10 (2026-11-05)
 
 ### Features

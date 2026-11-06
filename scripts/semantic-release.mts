@@ -13,25 +13,16 @@ async function git(...args: string[]) {
   return stdout.trim();
 }
 
-async function alphaWorktree(work: string) {
+async function alphaWorktree(work: string, dryRun: boolean) {
   await git("fetch", "--quiet", "origin");
-  const remote = await git(
-    "for-each-ref",
-    "--format=%(refname)",
-    "refs/remotes/origin/alpha",
-  );
-  await git(
-    "worktree",
-    "add",
-    "--quiet",
-    "-B",
-    "alpha",
-    work,
-    remote === "" ? "main" : "origin/alpha",
-  );
-  await git("-C", work, "merge", "--quiet", "--no-edit", "main");
+  const remote = await git("for-each-ref", "--format=%(refname)", "refs/remotes/origin/alpha");
+  const start = remote === "" ? "main" : "origin/alpha";
+  await git("worktree", "add", "--quiet", "-B", "alpha", work, start);
+  await git("-C", work, "merge", "--quiet", "--no-edit", "-X", "theirs", "main");
   await symlink(resolve("node_modules"), join(work, "node_modules"));
-  await git("-C", work, "push", "--quiet", "origin", "alpha");
+  if (!dryRun) {
+    await git("-C", work, "push", "--quiet", "origin", "alpha");
+  }
   return {
     path: work,
     [Symbol.asyncDispose]: async () => {
@@ -82,10 +73,8 @@ async function release(dryRun: boolean, cwd: string) {
 const dryRun = process.argv.includes("--dry-run");
 
 if (process.argv.includes("--alpha")) {
-  await using dir = await mkdtempDisposable(
-    join(tmpdir(), "play-by-play-alpha-"),
-  );
-  await using worktree = await alphaWorktree(join(dir.path, "alpha"));
+  await using dir = await mkdtempDisposable(join(tmpdir(), "play-by-play-alpha-"));
+  await using worktree = await alphaWorktree(join(dir.path, "alpha"), dryRun);
   await release(dryRun, worktree.path);
 } else {
   await release(dryRun, process.cwd());

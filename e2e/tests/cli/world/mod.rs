@@ -1,5 +1,6 @@
 mod claude;
 mod ran;
+mod spawn;
 mod style;
 mod sut;
 mod viewer;
@@ -23,13 +24,20 @@ pub use sut::Sut;
 pub use viewer::Viewer;
 
 pub struct World {
-    viewer: Viewer,
+    viewer: Option<Viewer>,
+    follower: Option<Viewer>,
     dir: TempDir,
     workspace: PathBuf,
 }
 
 impl World {
     pub fn new() -> World {
+        let mut world = World::unwatched();
+        world.reopen_viewer();
+        world
+    }
+
+    pub fn unwatched() -> World {
         let dir =
             TempDir::with_prefix("play-by-play-e2e-").expect("the world's folder can be made");
         let workspace = dir.path().join("workspace");
@@ -48,9 +56,11 @@ impl World {
         .expect("the fake tmux can be written");
         fs::set_permissions(&tmux, Permissions::from_mode(0o755))
             .expect("the fake tmux can be made runnable");
-        fs::create_dir(dir.path().join("play-by-play")).expect("the log folder can be made");
+        fs::create_dir_all(dir.path().join("play-by-play").join("tmp"))
+            .expect("the log folder can be made");
         World {
-            viewer: Viewer::start(dir.path(), &workspace),
+            viewer: None,
+            follower: None,
             dir,
             workspace,
         }
@@ -65,21 +75,61 @@ impl World {
     }
 
     pub fn viewer(&mut self) -> &mut Viewer {
-        &mut self.viewer
+        self.viewer.as_mut().expect("the world has a viewer")
     }
 
     pub fn reopen_viewer(&mut self) {
-        self.viewer = Viewer::start(self.dir.path(), &self.workspace);
+        self.viewer = Some(Viewer::start(self.dir.path(), &self.workspace));
     }
 
-    pub fn viewer_width(&self) -> String {
-        self.viewer_recorded("columns")
-            .expect("the viewer recorded its width")
+    pub fn follow(&mut self, pid: &str) {
+        self.follower = Some(Viewer::follow(self.dir.path(), &self.workspace, pid));
     }
 
-    pub fn viewer_theme(&self) -> String {
-        self.viewer_recorded("theme")
-            .expect("the viewer recorded its theme")
+    pub fn follower(&mut self) -> &mut Viewer {
+        self.follower.as_mut().expect("the world has a follower")
+    }
+
+    pub async fn workspace_file(&self, name: &str) -> String {
+        let path = self.workspace.join(name);
+        let written = || {
+            fs::read_to_string(&path)
+                .ok()
+                .filter(|text| text.ends_with('\n'))
+        };
+        let (sender, mut changes) = mpsc::unbounded_channel();
+        let mut watcher = KqueueWatcher::new(
+            move |change| {
+                let _ = sender.send(change);
+            },
+            Config::default(),
+        )
+        .expect("the workspace can be watched");
+        watcher
+            .watch(&self.workspace, RecursiveMode::Recursive)
+            .expect("the workspace is watched");
+        let _ = time::timeout(Duration::from_secs(1), async {
+            while written().is_none() && changes.recv().await.is_some() {}
+        })
+        .await;
+        written().expect("the workspace file is written")
+    }
+
+    pub async fn close(mut self) {
+        if let Some(viewer) = self.viewer.take() {
+            viewer.close().await;
+        }
+        if let Some(follower) = self.follower.take() {
+            follower.close().await;
+        }
+    }
+
+    pub async fn close_viewer(&mut self) {
+        self.viewer
+            .take()
+            .expect("the world has a viewer")
+            .close()
+            .await;
     }
 
     pub async fn viewer_width_becomes(&self, width: u16) {
@@ -100,7 +150,10 @@ impl World {
         )
         .expect("the log folder can be watched");
         watcher
-            .watch(&self.dir().join("play-by-play"), RecursiveMode::Recursive)
+            .watch(
+                &self.dir().join("play-by-play"),
+                RecursiveMode::NonRecursive,
+            )
             .expect("the log folder is watched");
         let _ = time::timeout(Duration::from_secs(1), async {
             while self.viewer_recorded(extension).as_deref() != Some(value)
@@ -109,6 +162,58 @@ impl World {
         })
         .await;
         assert_eq!(self.viewer_recorded(extension).as_deref(), Some(value));
+    }
+
+    pub async fn follower_width_becomes(&self, pid: &str, width: u16) {
+        let expected = width.to_string();
+        let (sender, mut changes) = mpsc::unbounded_channel();
+        let mut watcher = KqueueWatcher::new(
+            move |change| {
+                let _ = sender.send(change);
+            },
+            Config::default(),
+        )
+        .expect("the log folder can be watched");
+        watcher
+            .watch(&self.log_folder(), RecursiveMode::NonRecursive)
+            .expect("the log folder is watched");
+        let mut watching = false;
+        let _ = time::timeout(Duration::from_secs(1), async {
+            loop {
+                if let Some(dir) = self.follower_dir(pid)
+                    && !watching
+                {
+                    watching = watcher.watch(&dir, RecursiveMode::NonRecursive).is_ok();
+                }
+                if self.follower_recorded(pid).as_deref() == Some(expected.as_str())
+                    || changes.recv().await.is_none()
+                {
+                    break;
+                }
+            }
+        })
+        .await;
+        assert_eq!(
+            self.follower_recorded(pid).as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    fn follower_dir(&self, pid: &str) -> Option<PathBuf> {
+        let suffix = format!(".{pid}");
+        fs::read_dir(self.log_folder())
+            .expect("the log folder exists")
+            .map(|entry| entry.expect("the log folder lists").path())
+            .find(|path| {
+                path.is_dir()
+                    && path
+                        .file_name()
+                        .is_some_and(|name| name.to_string_lossy().ends_with(&suffix))
+            })
+    }
+
+    fn follower_recorded(&self, pid: &str) -> Option<String> {
+        fs::read_to_string(self.follower_dir(pid)?.join("columns")).ok()
     }
 
     fn viewer_recorded(&self, extension: &str) -> Option<String> {

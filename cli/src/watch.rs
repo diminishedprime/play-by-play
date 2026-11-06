@@ -1,12 +1,13 @@
 //! The viewer: left running in a terminal (the VS Code task opens one), it shows
 //! every command Claude runs in the workspace as it runs.
 
+use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::process::Command;
+use std::process::{self, Command};
 use std::task::{Context, Poll};
 
 use bat::assets::HighlightingAssets;
@@ -31,10 +32,31 @@ use crate::log::{CLEAR, Log};
 /// When the log's folder can't be made or watched, or the log can't be read.
 pub fn watch(log: &Log) -> AppResult {
     log.append()?;
+    fs::write(log.viewer_path(), process::id().to_string())?;
     runtime::Builder::new_current_thread()
         .enable_io()
         .build()?
         .block_on(Follower::from(log).follow())
+}
+
+/// Follows the live view of the program under the `run` with `pid`, waiting for
+/// it when the program hasn't claimed the viewer yet.
+///
+/// # Errors
+///
+/// When the program's view can't be read.
+pub fn follow(log: &Log, pid: u32) -> AppResult {
+    File::options()
+        .create(true)
+        .append(true)
+        .open(log.live_path(pid))?;
+    runtime::Builder::new_current_thread()
+        .enable_io()
+        .build()?
+        .block_on(Tail::from(log.live_path(pid)).follow(Columns(Recorded {
+            path: log.follower_columns_path(pid),
+            temporary: log.follower_columns_temporary_path(pid),
+        })))
 }
 
 /// Becomes tmux, attached to the workspace's session, which is started running
@@ -52,20 +74,90 @@ pub fn in_tmux(log: &Log) -> AppResult {
     Err(error.into())
 }
 
-struct Follower {
+struct Tail {
     path: PathBuf,
-    columns: PathBuf,
-    theme: PathBuf,
     from: u64,
+}
+
+impl From<PathBuf> for Tail {
+    fn from(path: PathBuf) -> Tail {
+        Tail { path, from: 0 }
+    }
+}
+
+impl Tail {
+    async fn follow(mut self, columns: Columns) -> AppResult {
+        let resizes = Wake::resizes()?;
+        columns.record()?;
+        let changes = Wake::changes(&self.path)?;
+        let mut stdout = io::stdout();
+        self.print(&mut stdout)?;
+        let mut wakes = changes.merge(resizes);
+        while let Some(wake) = wakes.next().await {
+            match wake {
+                Wake::Change => self.print(&mut stdout)?,
+                Wake::Resize => columns.record()?,
+            }
+        }
+        Ok(())
+    }
+
+    fn print(&mut self, out: &mut impl Write) -> AppResult {
+        let mut file = match File::open(&self.path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        };
+        file.seek(SeekFrom::Start(self.from))?;
+        self.from += io::copy(&mut file, out)?;
+        out.flush()?;
+        Ok(())
+    }
+}
+
+struct Recorded {
+    path: PathBuf,
+    temporary: PathBuf,
+}
+
+impl Recorded {
+    fn write(&self, value: impl Display) -> AppResult {
+        [&self.temporary, &self.path]
+            .into_iter()
+            .filter_map(|file| file.parent())
+            .try_for_each(fs::create_dir_all)?;
+        write!(File::create(&self.temporary)?, "{value}")?;
+        fs::rename(&self.temporary, &self.path)?;
+        Ok(())
+    }
+}
+
+struct Columns(Recorded);
+
+impl Columns {
+    fn record(&self) -> AppResult {
+        self.0.write(termios::tcgetwinsize(io::stdout())?.ws_col)
+    }
+}
+
+struct Follower {
+    tail: Tail,
+    columns: Columns,
+    theme: Recorded,
 }
 
 impl From<&Log<'_>> for Follower {
     fn from(log: &Log<'_>) -> Follower {
         Follower {
-            path: log.path(),
-            columns: log.columns_path(),
-            theme: log.theme_path(),
-            from: 0,
+            tail: Tail::from(log.path()),
+            columns: Columns(Recorded {
+                path: log.columns_path(),
+                temporary: log.columns_temporary_path(),
+            }),
+            theme: Recorded {
+                path: log.theme_path(),
+                temporary: log.theme_temporary_path(),
+            },
         }
     }
 }
@@ -73,21 +165,21 @@ impl From<&Log<'_>> for Follower {
 impl Follower {
     async fn follow(mut self) -> AppResult {
         let resizes = Wake::resizes()?;
-        self.record_width()?;
+        self.columns.record()?;
         self.record_theme()?;
-        let changes = Wake::changes(&self.path)?;
-        self.from = self.last_screen()?;
+        let changes = Wake::changes(&self.tail.path)?;
+        self.tail.from = self.last_screen()?;
         let mut stdout = io::stdout();
-        if fs::metadata(&self.path)?.len() == 0 {
+        if fs::metadata(&self.tail.path)?.len() == 0 {
             writeln!(stdout, "play-by-play is watching this workspace.")?;
             writeln!(stdout, "Claude's commands show up here as they run.")?;
         }
-        self.print_tail(&mut stdout)?;
+        self.tail.print(&mut stdout)?;
         let mut wakes = changes.merge(resizes);
         while let Some(wake) = wakes.next().await {
             match wake {
-                Wake::Change => self.print_tail(&mut stdout)?,
-                Wake::Resize => self.record_width()?,
+                Wake::Change => self.tail.print(&mut stdout)?,
+                Wake::Resize => self.columns.record()?,
             }
         }
         Ok(())
@@ -117,19 +209,13 @@ impl Follower {
                 })
         });
         if let Some(name) = closest {
-            write!(File::create(&self.theme)?, "{name}")?;
+            self.theme.write(name)?;
         }
         Ok(())
     }
 
-    fn record_width(&self) -> AppResult {
-        let columns = termios::tcgetwinsize(io::stdout())?.ws_col;
-        write!(File::create(&self.columns)?, "{columns}")?;
-        Ok(())
-    }
-
     fn last_screen(&self) -> AppResult<u64> {
-        let file = match File::open(&self.path) {
+        let file = match File::open(&self.tail.path) {
             Ok(file) => file,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(0),
             Err(error) => return Err(error.into()),
@@ -138,18 +224,6 @@ impl Follower {
         let log = unsafe { Mmap::map(&file)? };
         let start = memmem::rfind(&log, CLEAR.as_bytes()).unwrap_or(0);
         Ok(u64::try_from(start).expect("a log's length fits in a u64"))
-    }
-
-    fn print_tail(&mut self, out: &mut impl Write) -> AppResult {
-        let mut file = match File::open(&self.path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
-        file.seek(SeekFrom::Start(self.from))?;
-        self.from += io::copy(&mut file, out)?;
-        out.flush()?;
-        Ok(())
     }
 }
 

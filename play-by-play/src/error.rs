@@ -1,7 +1,6 @@
 use std::io;
 
-/// Why a [`LiveView`](crate::LiveView) couldn't show something. A row failing to
-/// render isn't one of these: that's the program's own error, shown in the block.
+/// Why a [`LiveView`](crate::LiveView) couldn't show something.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     /// stdout, the viewer's log, or the socket failed.

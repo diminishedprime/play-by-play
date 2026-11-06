@@ -1,15 +1,18 @@
 use std::env;
 use std::ffi::OsStr;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::OpenOptions;
+use std::io;
 use std::iter;
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::thread;
+use std::process::Command;
 
 use rustix::pty::{self, OpenptFlags};
+use tokio::io::Interest;
+use tokio::io::unix::AsyncFd;
 
 use super::ran::Ran;
+use super::spawn::{Spawned, Stdio};
 
 pub struct Sut {
     command: Command,
@@ -19,16 +22,28 @@ pub struct Sut {
 
 impl Sut {
     pub fn new(dir: &Path, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Sut {
-        let binary =
-            env::var("PLAY_BY_PLAY_BIN").expect("PLAY_BY_PLAY_BIN names the play-by-play binary");
+        let mut command = Command::new(Sut::binary());
+        command.args(args);
+        Sut::within_world(dir, command)
+    }
+
+    pub fn in_terminal(dir: &Path, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Sut {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_in-terminal"));
+        command.arg(Sut::binary()).args(args);
+        Sut::within_world(dir, command)
+    }
+
+    fn binary() -> String {
+        env::var("PLAY_BY_PLAY_BIN").expect("PLAY_BY_PLAY_BIN names the play-by-play binary")
+    }
+
+    fn within_world(dir: &Path, mut command: Command) -> Sut {
         let path = env::join_paths(
             iter::once(dir.join("bin"))
                 .chain(env::split_paths(&env::var_os("PATH").unwrap_or_default())),
         )
         .expect("the fake tools' folder joins PATH");
-        let mut command = Command::new(binary);
         command
-            .args(args)
             .env("TMPDIR", dir)
             .env("PATH", path)
             .env_remove("CLAUDE_PROJECT_DIR")
@@ -66,24 +81,15 @@ impl Sut {
         self
     }
 
-    pub fn run(mut self) -> Ran {
-        let mut child = self
-            .command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("play-by-play starts");
-        child
-            .stdin
-            .take()
-            .expect("play-by-play's stdin is piped")
-            .write_all(self.stdin.as_bytes())
-            .expect("play-by-play takes its stdin");
-        Ran::new(child.wait_with_output().expect("play-by-play finishes"))
+    pub async fn run(self) -> Ran {
+        Ran::new(
+            Spawned::new(&self.command, [Stdio::Pipe, Stdio::Pipe, Stdio::Pipe])
+                .output(self.stdin.into_bytes())
+                .await,
+        )
     }
 
-    pub fn run_in_terminal(self) -> Ran {
+    pub async fn run_in_terminal(self) -> Ran {
         let terminal =
             pty::openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).expect("a pseudo-terminal opens");
         pty::grantpt(&terminal).expect("the pseudo-terminal is granted");
@@ -93,25 +99,15 @@ impl Sut {
             .write(true)
             .open(name.to_str().expect("the pseudo-terminal's name is UTF-8"))
             .expect("the pseudo-terminal's screen opens");
-        let mut terminal = File::from(terminal);
-        let reading = thread::spawn(move || {
-            let mut seen = Vec::new();
-            let mut chunk = [0; 4096];
-            while let Ok(read @ 1..) = terminal.read(&mut chunk) {
-                seen.extend_from_slice(&chunk[..read]);
-            }
-            seen
-        });
-        let mut command = self.command;
-        let child = command
-            .stdin(Stdio::null())
-            .stdout(screen)
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("play-by-play starts");
-        drop(command);
-        let mut output = child.wait_with_output().expect("play-by-play finishes");
-        let seen = reading.join().expect("the terminal is read");
+        rustix::io::ioctl_fionbio(&terminal, true).expect("the pseudo-terminal stops blocking");
+        let terminal =
+            unsafe { AsyncFd::register(terminal) }.expect("the pseudo-terminal can be awaited");
+        let spawned = Spawned::new(
+            &self.command,
+            [Stdio::Null, Stdio::Fd(screen.into()), Stdio::Pipe],
+        );
+        let (seen, mut output) =
+            tokio::join!(Sut::read_terminal(&terminal), spawned.output(Vec::new()));
         output.stdout = String::from_utf8(seen)
             .expect("play-by-play prints UTF-8")
             .replace("\r\n", "\n")
@@ -119,15 +115,25 @@ impl Sut {
         Ran::new(output)
     }
 
-    pub fn start(mut self) -> Running {
-        Running(
-            self.command
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .expect("play-by-play starts"),
-        )
+    async fn read_terminal(terminal: &AsyncFd<OwnedFd>) -> Vec<u8> {
+        let mut seen = Vec::new();
+        let mut chunk = [0; 4096];
+        while let Ok(read @ 1..) = terminal
+            .async_io(Interest::READABLE, |fd| {
+                rustix::io::read(fd, &mut chunk).map_err(io::Error::from)
+            })
+            .await
+        {
+            seen.extend_from_slice(&chunk[..read]);
+        }
+        seen
+    }
+
+    pub fn start(self) -> Running {
+        Running(Spawned::new(
+            &self.command,
+            [Stdio::Pipe, Stdio::Pipe, Stdio::Pipe],
+        ))
     }
 
     pub fn into_command(self) -> Command {
@@ -135,10 +141,10 @@ impl Sut {
     }
 }
 
-pub struct Running(Child);
+pub struct Running(Spawned);
 
 impl Running {
-    pub fn finishes(self) -> Ran {
-        Ran::new(self.0.wait_with_output().expect("play-by-play finishes"))
+    pub async fn finishes(self) -> Ran {
+        Ran::new(self.0.output(Vec::new()).await)
     }
 }

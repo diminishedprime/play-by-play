@@ -1,22 +1,18 @@
+use std::future;
 use std::hash::Hash;
+use std::io::{self, ErrorKind, Write as _};
 
-use indexmap::IndexMap;
-
-use crate::error::AppResult;
-use crate::play_by_play::PlayByPlay;
+use crate::error::{AppError, AppResult};
+use crate::redraw::{Line, Redraw, Width};
+use crate::screen::Screen;
 use crate::terminal::Terminal;
 
-/// Shows a program's [`PlayByPlay`]: a plain line on stdout for each row that
-/// changes, and, when someone is watching, a live block in the viewer's terminal.
+/// Shows a program's [`Redraw`] content: each line's narration on stdout when
+/// it changes, and, when someone is watching, a live block in the viewer's
+/// terminal.
 pub struct LiveView<K> {
     terminal: Option<Terminal>,
-    rows: IndexMap<K, Row>,
-    scratch: String,
-}
-
-struct Row {
-    line: String,
-    good: usize,
+    screen: Screen<K>,
 }
 
 impl<K: Eq + Hash + Clone> LiveView<K> {
@@ -25,21 +21,77 @@ impl<K: Eq + Hash + Clone> LiveView<K> {
     /// # Errors
     ///
     /// When `play-by-play run` offered a terminal that can't be reached.
-    pub fn open() -> AppResult<LiveView<K>> {
-        todo!("Terminal::connect, no rows yet")
+    pub async fn open() -> AppResult<LiveView<K>> {
+        Ok(LiveView {
+            terminal: Terminal::connect().await?,
+            screen: Screen::new(),
+        })
     }
 
-    /// Shows `play` as it is now: a plain line for each new or changed row, and
-    /// the live block redrawn. A row that fails to render prints its error to
-    /// stderr and keeps its last good text in the block, with the error after it.
+    /// Waits until the viewer's terminal changes width, so the program can
+    /// [`render`](LiveView::render) at the new width. With nobody
+    /// watching, it never finishes. Safe to cancel, as in a `select!` beside the
+    /// program's own work.
     ///
     /// # Errors
     ///
-    /// When stdout or the viewer's log can't be written; never for a row's own
-    /// error.
-    pub fn update<P: PlayByPlay<Key = K>>(&mut self, _play: &P) -> AppResult {
-        todo!(
-            "write each row into scratch, swap it into the row's line when it differs from line[..good], move_index it to where it came, truncate the rows not seen, print what changed, draw the block"
-        )
+    /// When the viewer's terminal can't be read.
+    pub async fn resized(&mut self) -> AppResult {
+        match &mut self.terminal {
+            Some(terminal) => terminal.resized().await,
+            None => future::pending().await,
+        }
+    }
+
+    /// Shows `lines` as they are now: each new narration on stdout, and the live
+    /// block redrawn.
+    ///
+    /// # Errors
+    ///
+    /// When stdout or the viewer's log can't be written.
+    ///
+    /// # Panics
+    ///
+    /// When a line's [`draw`](Line::draw) or [`narrate`](Line::narrate) fails,
+    /// which writing into a `String` never causes on its own.
+    pub async fn render<R: Redraw<Key = K>>(&mut self, lines: &R) -> AppResult {
+        self.refresh_screen(lines);
+        self.print_narrations()?;
+        let Some(terminal) = &mut self.terminal else {
+            return Ok(());
+        };
+        match terminal.draw(self.screen.block()).await {
+            Err(AppError::Io(error))
+                if matches!(
+                    error.kind(),
+                    ErrorKind::BrokenPipe | ErrorKind::ConnectionReset
+                ) =>
+            {
+                self.terminal = None;
+                Ok(())
+            }
+            drawn => drawn,
+        }
+    }
+
+    fn refresh_screen<R: Redraw<Key = K>>(&mut self, lines: &R) {
+        let width = self.terminal.as_ref().map_or(Width::Unbounded, |terminal| {
+            Width::Columns(terminal.columns())
+        });
+        let mut frame = self.screen.frame();
+        for line in lines.draw(width) {
+            let (drawn, narration) = frame.line(line.key());
+            line.draw(width, drawn).expect("a line draws into a String");
+            line.narrate(narration)
+                .expect("a line narrates into a String");
+        }
+    }
+
+    fn print_narrations(&self) -> AppResult {
+        let mut out = io::stdout().lock();
+        self.screen
+            .narrations()
+            .try_for_each(|narration| writeln!(out, "{narration}"))?;
+        Ok(())
     }
 }

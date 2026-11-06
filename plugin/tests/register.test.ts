@@ -117,31 +117,55 @@ test("without the binary, a Bash command is checked as it is", async ($, on) => 
   expect(checked).toEqual([{ command: "echo 'hi'" }]);
 });
 
-test("Claude is told the person is watching its output live", async ($, on) => {
+test("Claude is told the person is watching when a session starts", async ($, on) => {
   engine(on, { binary: true });
 
   await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
-  const context = await $.prompt.context({
-    blocks: [{ name: "currentDate", text: "Today's date is 2026-11-03." }],
-  });
+  const started = await $.classic.SessionStart({ source: "startup" });
 
-  expect(context.blocks).toEqual([
-    { name: "currentDate", text: "Today's date is 2026-11-03." },
-    { name: "playByPlay", text: expect.stringContaining("play-by-play") },
+  expect(started.additionalContext).toEqual([
+    "Watched live through play-by-play.",
   ]);
+});
+
+test("Claude is told the person is watching again after /clear", async ($, on) => {
+  engine(on, { binary: true });
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  const cleared = await $.classic.SessionStart({ source: "clear" });
+
+  expect(cleared.additionalContext).toEqual([
+    "Watched live through play-by-play.",
+  ]);
+});
+
+test("Claude is told the person is watching again after compacting", async ($, on) => {
+  engine(on, { binary: true });
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  const compacted = await $.classic.SessionStart({ source: "compact" });
+
+  expect(compacted.additionalContext).toEqual([
+    "Watched live through play-by-play.",
+  ]);
+});
+
+test("a resumed session isn't told again", async ($, on) => {
+  engine(on, { binary: true });
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  const resumed = await $.classic.SessionStart({ source: "resume" });
+
+  expect(resumed.additionalContext).toBeUndefined();
 });
 
 test("without the binary, Claude isn't told anyone is watching", async ($, on) => {
   engine(on, { binary: false });
 
   await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
-  const context = await $.prompt.context({
-    blocks: [{ name: "currentDate", text: "Today's date is 2026-11-03." }],
-  });
+  const started = await $.classic.SessionStart({ source: "startup" });
 
-  expect(context.blocks).toEqual([
-    { name: "currentDate", text: "Today's date is 2026-11-03." },
-  ]);
+  expect(started.additionalContext).toBeUndefined();
 });
 
 function engine(
@@ -187,7 +211,7 @@ function engine(
       ? classicHook
       : { decision: "allow" };
   });
-  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+  on("classic.SessionStart", () => ({}));
   on("fs.read", () => ({ value: "Watched live through play-by-play." }));
   return { ran, logged, called, checked };
 }

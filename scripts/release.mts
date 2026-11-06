@@ -9,6 +9,7 @@ import { glob } from "tinyglobby";
 
 const GIT_SUFFIX = /\.git$/;
 const GITHUB_REPO = "diminishedprime/play-by-play";
+const GH_REPO_FLAGS = ["--repo", GITHUB_REPO];
 
 const exec = promisify(execFile);
 
@@ -43,9 +44,7 @@ async function rewriteForGithub(work: string, gitea: string, github: string) {
     ignore: [".git"],
     absolute: true,
   });
-  await Promise.all(
-    files.map(async (path) => rewriteFile(path, gitea, github)),
-  );
+  await Promise.all(files.map(async (path) => rewriteFile(path, gitea, github)));
 }
 
 async function existingRefs(...refs: string[]) {
@@ -58,10 +57,7 @@ async function worktreeAdd(...args: string[]) {
 }
 
 async function addReleaseWorktree(work: string) {
-  const refs = await existingRefs(
-    "refs/heads/release",
-    "refs/remotes/origin/release",
-  );
+  const refs = await existingRefs("refs/heads/release", "refs/remotes/origin/release");
   if (refs.has("refs/heads/release")) {
     await worktreeAdd(work, "release");
   } else if (refs.has("refs/remotes/origin/release")) {
@@ -78,38 +74,15 @@ async function addReleaseWorktree(work: string) {
 }
 
 async function commitAndPush(work: string, version: string, tag: string) {
-  await git(
-    "-C",
-    work,
-    "commit",
-    "--all",
-    "--quiet",
-    "-m",
-    `Play-by-Play ${version} release`,
-  );
+  await git("-C", work, "commit", "--all", "--quiet", "-m", `Play-by-Play ${version} release`);
   await git("tag", tag, "release");
   await git("push", "--quiet", "origin", "release", tag);
 }
 
-async function publishToGithub(
-  tag: string,
-  notes: string,
-  prerelease: boolean,
-) {
+async function publishToGithub(tag: string, notes: string, prerelease: boolean) {
   await git("push", "--quiet", "github", "release:main", tag);
   const flags = prerelease ? ["--prerelease"] : [];
-  return gh(
-    "release",
-    "create",
-    tag,
-    "--repo",
-    GITHUB_REPO,
-    "--title",
-    tag,
-    "--notes",
-    notes,
-    ...flags,
-  );
+  return gh("release", "create", tag, ...GH_REPO_FLAGS, "--title", tag, "--notes", notes, ...flags);
 }
 
 async function setPluginVersion(cwd: string, version: string) {
@@ -135,25 +108,12 @@ export async function prepare(
   });
   await writeFile(changelog, formatted);
   await exec("cargo", ["set-version", "--workspace", version], { cwd });
-  await exec(
-    "pnpm",
-    [
-      "--filter",
-      "play-by-play-vscode",
-      "version",
-      version,
-      "--no-git-tag-version",
-      "--no-git-checks",
-    ],
-    { cwd },
-  );
+  const noGit = ["--no-git-tag-version", "--no-git-checks"];
+  await exec("pnpm", ["--filter", "play-by-play-vscode", "version", version, ...noGit], { cwd });
   await setPluginVersion(cwd, version);
 }
 
-export async function publish(
-  _pluginConfig: unknown,
-  { nextRelease, branch }: PublishContext,
-) {
+export async function publish(_pluginConfig: unknown, { nextRelease, branch }: PublishContext) {
   const { version, notes } = nextRelease;
   if (notes === undefined) {
     throw new Error("semantic-release generated no release notes");
@@ -169,10 +129,6 @@ export async function publish(
   await git("-C", worktree.path, "read-tree", "-u", "--reset", branch.name);
   await rewriteForGithub(worktree.path, gitea, github);
   await commitAndPush(worktree.path, version, tag);
-  const url = await publishToGithub(
-    tag,
-    notes,
-    branch.prerelease !== undefined,
-  );
+  const url = await publishToGithub(tag, notes, branch.prerelease !== undefined);
   return { name: tag, url };
 }
