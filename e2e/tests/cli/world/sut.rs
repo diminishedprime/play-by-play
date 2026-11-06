@@ -48,6 +48,7 @@ impl Sut {
             .env("PATH", path)
             .env_remove("CLAUDE_PROJECT_DIR")
             .env_remove("TMUX")
+            .env_remove(play_by_play::env::SOCKET)
             .env("CARGO_HOME", dir.join("cargo"));
         Sut {
             command,

@@ -941,7 +941,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "play-by-play"
-version = "1.0.0-alpha.14"
+version = "1.0.0-alpha.15"
 dependencies = [
  "bytes",
  "indexmap",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-cli"
-version = "1.0.0-alpha.14"
+version = "1.0.0-alpha.15"
 dependencies = [
  "bat",
  "bytes",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-e2e"
-version = "1.0.0-alpha.14"
+version = "1.0.0-alpha.15"
 dependencies = [
  "libc",
  "notify",

@@ -1,9 +1,9 @@
 //! Renders a [`Broadcast`] to a viewer the test plays over a socket.
 
-use std::env;
 use std::fmt;
+use std::io::ErrorKind;
 
-use play_by_play::{Board, Broadcast, Live};
+use play_by_play::{AppError, Board, Broadcast, Live};
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixListener;
 
@@ -37,7 +37,6 @@ async fn keeps_rendering_once_its_viewer_goes() {
     let dir = tempfile::tempdir().expect("a folder for the socket is made");
     let socket = dir.path().join("viewer.socket");
     let listener = UnixListener::bind(&socket).expect("the viewer listens");
-    unsafe { env::set_var(play_by_play::env::SOCKET, &socket) };
     let viewer = tokio::spawn(async move {
         let (mut program, _) = listener.accept().await.expect("the program connects");
         program
@@ -46,9 +45,9 @@ async fn keeps_rendering_once_its_viewer_goes() {
             .expect("the viewer sends its width");
     });
 
-    let mut broadcast = Broadcast::<String>::open()
+    let mut broadcast = Broadcast::<String>::connect(&socket)
         .await
-        .expect("the broadcast opens");
+        .expect("the broadcast connects");
     viewer.await.expect("the viewer hangs up");
     let rows = Rows(vec![Row("a one".to_owned())]);
 
@@ -65,4 +64,22 @@ async fn keeps_rendering_once_its_viewer_goes() {
         .render(&rows)
         .await
         .expect("the broadcast keeps rendering without a viewer");
+}
+
+#[tokio::test]
+async fn fails_to_connect_when_the_viewer_hangs_up_before_its_width() {
+    let dir = tempfile::tempdir().expect("a folder for the socket is made");
+    let socket = dir.path().join("viewer.socket");
+    let listener = UnixListener::bind(&socket).expect("the viewer listens");
+    let viewer = tokio::spawn(async move {
+        listener.accept().await.expect("the program connects");
+    });
+
+    let connected = Broadcast::<String>::connect(&socket).await;
+    viewer.await.expect("the viewer hangs up");
+
+    let Err(AppError::Io(error)) = connected else {
+        panic!("the broadcast connected without hearing a width");
+    };
+    assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
 }

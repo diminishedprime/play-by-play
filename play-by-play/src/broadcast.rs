@@ -1,8 +1,11 @@
+use std::env as process_env;
 use std::future;
 use std::hash::Hash;
 use std::io::ErrorKind;
+use std::path::Path;
 
 use crate::board::Board;
+use crate::env;
 use crate::error::{AppError, AppResult};
 use crate::screen::Screen;
 use crate::terminal::Terminal;
@@ -21,10 +24,32 @@ impl<K: Eq + Hash + Clone> Broadcast<K> {
     ///
     /// When play-by-play offered a terminal that can't be reached.
     pub async fn open() -> AppResult<Broadcast<K>> {
+        match process_env::var_os(env::SOCKET) {
+            Some(socket) => Broadcast::connect(socket).await,
+            None => Ok(Broadcast::offline()),
+        }
+    }
+
+    /// Connects to the viewer's terminal listening at `socket`.
+    ///
+    /// # Errors
+    ///
+    /// When `socket` can't be reached, or closes before sending the viewer's
+    /// width.
+    pub async fn connect(socket: impl AsRef<Path>) -> AppResult<Broadcast<K>> {
         Ok(Broadcast {
-            terminal: Terminal::connect().await?,
+            terminal: Some(Terminal::connect(socket).await?),
             screen: Screen::new(),
         })
+    }
+
+    /// A broadcast with nobody watching, so rendering does nothing.
+    #[must_use]
+    pub fn offline() -> Broadcast<K> {
+        Broadcast {
+            terminal: None,
+            screen: Screen::new(),
+        }
     }
 
     /// Waits until the viewer's terminal changes width, so the program can

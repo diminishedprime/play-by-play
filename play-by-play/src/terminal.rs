@@ -1,6 +1,6 @@
-use std::env as process_env;
 use std::future;
 use std::io::{self, ErrorKind};
+use std::path::Path;
 
 use bytes::{BufMut as _, BytesMut};
 use prost::Message as _;
@@ -10,7 +10,6 @@ use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio_stream::StreamExt as _;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
-use crate::env;
 use crate::error::AppResult;
 use crate::proto;
 
@@ -27,21 +26,18 @@ pub(crate) struct Terminal {
 }
 
 impl Terminal {
-    pub(crate) async fn connect() -> AppResult<Option<Terminal>> {
-        let Some(path) = process_env::var_os(env::SOCKET) else {
-            return Ok(None);
-        };
+    pub(crate) async fn connect(path: impl AsRef<Path>) -> AppResult<Terminal> {
         let (read, socket) = UnixStream::connect(path).await?.into_split();
         let mut widths = FramedRead::new(read, LengthDelimitedCodec::new());
         let Some(columns) = Terminal::next_width(&mut widths).await? else {
             return Err(io::Error::from(ErrorKind::UnexpectedEof).into());
         };
-        Ok(Some(Terminal {
+        Ok(Terminal {
             widths,
             socket,
             columns,
             message: BytesMut::new(),
-        }))
+        })
     }
 
     pub(crate) fn columns(&self) -> u16 {

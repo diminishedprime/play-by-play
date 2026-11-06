@@ -1,3 +1,9 @@
+## 1.0.0-alpha.15 (2026-11-06)
+
+### Features
+
+- connect a broadcast to a named socket, or open one offline
+
 ## 1.0.0-alpha.14 (2026-11-06)
 
 ### Features
