@@ -1,19 +1,19 @@
 use crate::world::World;
 
 const INDENT: &str = "  ";
-const OK: &str = "✅  \x1b[32m";
-const FAILED: &str = "❌  \x1b[31m";
-const WARNING: &str = "⚠️  \x1b[33m";
-const SKIPPED: &str = "⏹️  \x1b[90m";
-const END: &str = "\x1b[0m";
+const OK: &str = "✅  \x1b[1m\x1b[32m";
+const FAILED: &str = "❌  \x1b[1m\x1b[31m";
+const WARNING: &str = "⚠️  \x1b[1m\x1b[33m";
+const SKIPPED: &str = "⏹️  \x1b[1m\x1b[90m";
+const END: &str = "\x1b[39m";
 const BOLD: &str = "\x1b[1m";
 const NORMAL: &str = "\x1b[22m";
-const PATH: &str = "\x1b[1m$PATH:\x1b[22m";
-const LOG: &str = "\x1b[1mLog folder:\x1b[22m";
-const TMUX: &str = "\x1b[1mtmux:\x1b[22m";
-const PLUGIN: &str = "\x1b[1mPlugin:\x1b[22m";
-const EXTENSION: &str = "\x1b[1mExtension:\x1b[22m";
-const VERSION: &str = "\x1b[1mVersion:\x1b[22m";
+const PATH: &str = "$PATH:\x1b[22m";
+const LOG: &str = "Log folder:\x1b[22m";
+const TMUX: &str = "tmux:\x1b[22m";
+const PLUGIN: &str = "Plugin:\x1b[22m";
+const EXTENSION: &str = "Extension:\x1b[22m";
+const VERSION: &str = "Version:\x1b[22m";
 
 #[tokio::test]
 async fn passes_when_everything_is_set_up() {

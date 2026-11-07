@@ -11,6 +11,19 @@ use serde_json::json;
 
 use world::{Style, Viewer, World};
 
+const BOLD: &str = "\x1b[1m";
+const NORMAL: &str = "\x1b[22m";
+const ITALIC: &str = "\x1b[3m";
+const UPRIGHT: &str = "\x1b[23m";
+const UNDERLINE: &str = "\x1b[4m";
+const NO_UNDERLINE: &str = "\x1b[24m";
+const GREEN: &str = "\x1b[32m";
+const BLUE: &str = "\x1b[34m";
+const CYAN: &str = "\x1b[36m";
+const DEFAULT_COLOR: &str = "\x1b[39m";
+const LINK_TO_DOCS: &str = "\x1b]8;;https://example.com/docs\x1b\\";
+const LINK_END: &str = "\x1b]8;;\x1b\\";
+
 #[tokio::test]
 async fn reports_its_version_for_the_plugins_install_check() {
     let world = World::new();
@@ -276,12 +289,15 @@ async fn formats_an_agents_markdown() {
     world.viewer_theme_becomes("Solarized (dark)").await;
     world.claude().asks_agent(
         "find **everything**",
-        r"## Overview
+        r"## Overview of `notify` crate
 
 The viewer follows the log with `kqueue`, so take **care**: every write reaches it straight away and nothing waits for the command to finish.
 
+See *these* [docs](https://example.com/docs) and keep **bold _both_**.
+
 - first item
 - a second item that is long enough to wrap past the viewer's seventy-seven columns and keep going on its way
+- see [the docs](https://example.com/docs) here
 
 ```rust
 let color = log.next_color()?;
@@ -302,14 +318,17 @@ plain code
             "prompt:",
             "find everything",
             "response:",
-            "Overview",
+            "Overview of notify crate",
             "",
             "The viewer follows the log with kqueue, so take care: every write reaches it",
             "straight away and nothing waits for the command to finish.",
             "",
+            "See these docs and keep bold both.",
+            "",
             "- first item",
             "- a second item that is long enough to wrap past the viewer's seventy-seven",
             "  columns and keep going on its way",
+            "- see the docs here",
             "",
             "let color = log.next_color()?;",
             "",
@@ -319,11 +338,29 @@ plain code
         .await;
     assert_eq!(world.viewer().style_of("everything"), Some(Style::Bold));
     assert_eq!(world.viewer().style_of("- "), Some(Style::Cyan));
-    assert_eq!(world.viewer().style_of("first"), Some(Style::Cyan));
     assert_eq!(world.viewer().style_of("Overview"), Some(Style::Blue));
     assert_eq!(world.viewer().style_of("kqueue"), Some(Style::Green));
     assert_eq!(world.viewer().style_of("care"), Some(Style::Bold));
     assert_eq!(world.viewer().style_of("let"), Some(Style::SolarizedBlue));
+    for painted in [
+        format!("{BOLD}everything{NORMAL}"),
+        format!("{CYAN}- first item{DEFAULT_COLOR}"),
+        format!("{BOLD}{BLUE}Overview of {GREEN}notify{BLUE} crate{NORMAL}{DEFAULT_COLOR}"),
+        format!("{GREEN}kqueue{DEFAULT_COLOR}"),
+        format!("{BOLD}care{NORMAL}:"),
+        format!("{ITALIC}these{UPRIGHT}"),
+        format!(
+            "{LINK_TO_DOCS}{UNDERLINE}{BLUE}docs{NO_UNDERLINE}{DEFAULT_COLOR}{LINK_END} and keep {BOLD}bold {ITALIC}both{NORMAL}{UPRIGHT}."
+        ),
+        format!(
+            "{CYAN}- see {LINK_TO_DOCS}{UNDERLINE}{BLUE}the docs{NO_UNDERLINE}{CYAN}{LINK_END} here{DEFAULT_COLOR}"
+        ),
+    ] {
+        assert!(
+            world.viewer().printed(&painted),
+            "the viewer was never sent {painted:?}"
+        );
+    }
     world.close().await;
 }
 
@@ -581,12 +618,27 @@ async fn joins_a_fetched_pages_broken_lines_and_emphasis() {
 async fn formats_a_fetched_pages_markdown() {
     let mut world = World::new();
 
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
     world
         .claude()
         .fetches(
             "https://example.com",
             "what does it say",
-            "It says to take **care**.",
+            "It says to take **care**.
+
+Before you ship anything, run every test you have and then build with `cargo build --release` first.
+
+- first paragraph
+
+  second paragraph
+- next item
+
+Then:
+
+- outer
+  - inner one
+  - inner two
+- after",
         )
         .await
         .succeeds();
@@ -597,10 +649,30 @@ async fn formats_a_fetched_pages_markdown() {
             "fetch: https://example.com",
             "prompt: what does it say",
             "It says to take care.",
+            "",
+            "Before you ship anything, run every test you have and then build with",
+            "cargo build --release first.",
+            "",
+            "- first paragraph",
+            "",
+            "  second paragraph",
+            "- next item",
+            "",
+            "Then:",
+            "",
+            "- outer",
+            "  - inner one",
+            "  - inner two",
+            "- after",
             "fetch: end",
         ])
         .await;
     assert_eq!(world.viewer().style_of("care"), Some(Style::Bold));
+    let painted = format!("{GREEN}cargo build --release{DEFAULT_COLOR} first.");
+    assert!(
+        world.viewer().printed(&painted),
+        "the viewer was never sent {painted:?}"
+    );
     world.close().await;
 }
 
@@ -804,6 +876,21 @@ async fn offers_a_command_a_socket_while_a_viewer_watches() {
         .runs(r#"test -S "$PLAY_BY_PLAY_SOCKET""#)
         .await
         .succeeds();
+    world.close().await;
+}
+
+#[tokio::test]
+async fn tells_the_extension_which_command_claimed_the_viewer() {
+    let world = World::new();
+    let command = r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && print 'a one' | live-view"#;
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let extension = world.extension_listens();
+    world.claude().runs(command).await.succeeds();
+    let pid = world.workspace_file("pid").await;
+
+    extension.heard_claimed(pid.trim(), command).await;
     world.close().await;
 }
 

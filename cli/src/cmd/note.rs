@@ -1,8 +1,7 @@
 //! The tool calls `note` shows.
 
 use clap::Subcommand;
-
-use crate::log::Color;
+use play_by_play::Color;
 
 /// When in a tool call `note` runs.
 #[derive(Subcommand)]
@@ -16,7 +15,7 @@ pub enum NotePhase {
     /// After the tool runs: shows its result, from the tool's result on stdin.
     Result {
         /// The color its header printed, which its closing line repeats.
-        #[arg(long, value_enum)]
+        #[arg(long)]
         color: Color,
         /// The tool that was called.
         #[command(subcommand)]

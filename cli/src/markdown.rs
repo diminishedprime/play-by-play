@@ -1,18 +1,19 @@
 //! Markdown written for the viewer's terminal, wrapped to its width.
 
 use std::cell::Ref;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write as _};
 use std::io::Write;
 use std::ops::Range;
 
 use bat::PrettyPrinter;
-use comrak::nodes::{Ast, AstNode, NodeCodeBlock, NodeValue};
+use comrak::nodes::{AstNode, NodeCodeBlock, NodeValue};
 use comrak::{Arena, Options};
+use play_by_play::Painter;
 use textwrap::core::{self, Fragment};
 use textwrap::wrap_algorithms;
 
 use crate::error::AppResult;
-use crate::log::{BOLD, Color, RESET, Screen};
+use crate::log::Screen;
 use crate::text::Text;
 
 /// Markdown being written into `out`, wrapped at `columns`, its code
@@ -45,16 +46,23 @@ impl<'s, W: Write> Markdown<'s, W> {
             match &block.data().value {
                 NodeValue::CodeBlock(code) => markdown.code(code)?,
                 NodeValue::List(_) => markdown.list(block)?,
-                _ => markdown.paragraph(block, &Piece::PLAIN, &Piece::PLAIN)?,
+                _ => markdown.paragraph(Node(block), Node(block))?,
             }
         }
         Ok(())
     }
 
     fn list<'a>(&mut self, node: &'a AstNode<'a>) -> AppResult {
+        let loose = matches!(&node.data().value, NodeValue::List(list) if !list.tight);
         for item in node.children() {
-            for block in item.children() {
-                self.paragraph(block, &Piece::MARKER, &Piece::HANGING)?;
+            for (at, block) in item.children().enumerate() {
+                if at > 0 && loose {
+                    writeln!(self.out)?;
+                }
+                match &block.data().value {
+                    NodeValue::List(_) => self.list(block)?,
+                    _ => self.paragraph(Node(item), Node(block))?,
+                }
             }
         }
         Ok(())
@@ -75,172 +83,192 @@ impl<'s, W: Write> Markdown<'s, W> {
         Ok(())
     }
 
-    fn paragraph<'a>(&mut self, node: &'a AstNode<'a>, first: &Piece, rest: &Piece) -> AppResult {
-        let inlines = Inline::collect(node);
-        let paragraph = Paragraph::of(&inlines);
-        let width = self.columns - f64::from(u16::try_from(first.text.len()).unwrap_or(u16::MAX));
-        let lines = wrap_algorithms::wrap_first_fit(&paragraph.words, &[width]);
+    fn paragraph<'a>(&mut self, root: Node<'a>, block: Node<'a>) -> AppResult {
+        let pieces = Piece::split(block);
+        let words = Word::join(&pieces);
+        let lines = wrap_algorithms::wrap_first_fit(&words, &[self.columns - root.indent()]);
+        let leads = root
+            .0
+            .first_child()
+            .is_some_and(|first| first.same_node(block.0));
         for (at, line) in lines.into_iter().enumerate() {
-            write!(self.out, "{}", if at == 0 { first } else { rest })?;
-            self.line(&paragraph.pieces, line)?;
+            let (Some(first), Some(last)) = (line.first(), line.last()) else {
+                continue;
+            };
+            let line = Line {
+                root,
+                marked: leads && at == 0,
+                pieces: &pieces[first.pieces.start..last.pieces.end],
+            };
+            writeln!(self.out, "{line}")?;
         }
-        Ok(())
-    }
-
-    fn line(&mut self, pieces: &[Piece], words: &[Word]) -> AppResult {
-        for (at, word) in words.iter().enumerate() {
-            if at > 0 {
-                write!(self.out, " ")?;
-            }
-            for piece in &pieces[word.pieces.clone()] {
-                write!(self.out, "{piece}")?;
-            }
-        }
-        writeln!(self.out)?;
         Ok(())
     }
 }
 
 #[derive(Clone, Copy)]
-enum Style {
+struct Node<'a>(&'a AstNode<'a>);
+
+impl<'a> Node<'a> {
+    fn text(self) -> Ref<'a, str> {
+        Ref::map(self.0.data(), |ast| match &ast.value {
+            NodeValue::Text(text) => text.as_ref(),
+            NodeValue::Code(code) => code.literal.as_str(),
+            NodeValue::SoftBreak | NodeValue::LineBreak => " ",
+            _ => "",
+        })
+    }
+
+    fn is_leaf(self) -> bool {
+        matches!(
+            self.0.data().value,
+            NodeValue::Text(_) | NodeValue::Code(_) | NodeValue::SoftBreak | NodeValue::LineBreak
+        )
+    }
+
+    fn is_item(self) -> bool {
+        matches!(self.0.data().value, NodeValue::Item(_))
+    }
+
+    fn is_code(self) -> bool {
+        matches!(self.0.data().value, NodeValue::Code(_))
+    }
+
+    fn depth(self) -> usize {
+        self.0
+            .ancestors()
+            .map(Node)
+            .filter(|node| node.is_item())
+            .count()
+    }
+
+    fn indent(self) -> f64 {
+        f64::from(u32::try_from(2 * self.depth()).unwrap_or(u32::MAX))
+    }
+
+    fn toward(self, leaf: Node<'a>) -> Option<Node<'a>> {
+        leaf.0
+            .ancestors()
+            .find(|node| node.parent().is_some_and(|parent| parent.same_node(self.0)))
+            .map(Node)
+    }
+
+    fn paint(self, out: &mut Painter<'_, impl fmt::Write>, pieces: &[Piece<'a>]) -> fmt::Result {
+        pieces
+            .chunk_by(|a, b| {
+                self.toward(a.node)
+                    .is_some_and(|child| Some(child) == self.toward(b.node))
+            })
+            .enumerate()
+            .try_for_each(|(at, run)| {
+                if at > 0 && !run[0].glued {
+                    out.write_str(" ")?;
+                }
+                match self.toward(run[0].node) {
+                    Some(child) => Style::of(child).wrap(out, |out| child.paint(out, run)),
+                    None => out.write_str(&run[0].text()),
+                }
+            })
+    }
+
+    fn gutter(self, out: &mut Painter<'_, impl fmt::Write>, marked: bool) -> fmt::Result {
+        let Some(outer) = self.depth().checked_sub(1) else {
+            return Ok(());
+        };
+        write!(out, "{:width$}", "", width = 2 * outer)?;
+        out.write_str(if marked { "- " } else { "  " })
+    }
+}
+
+impl PartialEq for Node<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.same_node(other.0)
+    }
+}
+
+enum Style<'a> {
     Plain,
-    Code,
     Bold,
+    Italic,
+    Code,
     Heading,
-    List,
+    Item,
+    Link(Ref<'a, str>),
 }
 
-enum Inline<'a> {
-    Text(Ref<'a, str>, Style),
-    Space,
-}
-
-impl<'a> Inline<'a> {
-    fn collect(node: &'a AstNode<'a>) -> Vec<Inline<'a>> {
-        let in_item = node
-            .parent()
-            .is_some_and(|parent| matches!(parent.data().value, NodeValue::Item(_)));
-        let style = match node.data().value {
+impl<'a> Style<'a> {
+    fn of(node: Node<'a>) -> Style<'a> {
+        let ast = match Ref::filter_map(node.0.data(), |ast| match &ast.value {
+            NodeValue::Link(link) => Some(link.url.as_str()),
+            _ => None,
+        }) {
+            Ok(url) => return Style::Link(url),
+            Err(ast) => ast,
+        };
+        match ast.value {
+            NodeValue::Strong => Style::Bold,
+            NodeValue::Emph => Style::Italic,
+            NodeValue::Code(_) => Style::Code,
             NodeValue::Heading(_) => Style::Heading,
-            _ if in_item => Style::List,
+            NodeValue::Item(_) => Style::Item,
             _ => Style::Plain,
-        };
-        let mut inlines = Vec::new();
-        Inline::collect_into(node, style, &mut inlines);
-        inlines
-    }
-
-    fn collect_into(node: &'a AstNode<'a>, style: Style, inlines: &mut Vec<Inline<'a>>) {
-        for child in node.children() {
-            let ast = match Ref::filter_map(child.data(), |ast| ast.value.text()) {
-                Ok(text) => {
-                    inlines.push(Inline::Text(text, style));
-                    continue;
-                }
-                Err(ast) => ast,
-            };
-            let ast = match Ref::filter_map(ast, Inline::code) {
-                Ok(code) => {
-                    inlines.push(Inline::Text(code, Style::Code));
-                    continue;
-                }
-                Err(ast) => ast,
-            };
-            match ast.value {
-                NodeValue::SoftBreak | NodeValue::LineBreak => inlines.push(Inline::Space),
-                NodeValue::Strong => {
-                    drop(ast);
-                    Inline::collect_into(child, Style::Bold, inlines);
-                }
-                _ => {
-                    drop(ast);
-                    Inline::collect_into(child, style, inlines);
-                }
-            }
         }
     }
 
-    fn code(ast: &Ast) -> Option<&str> {
-        if let NodeValue::Code(code) = &ast.value {
-            Some(&code.literal)
-        } else {
-            None
+    fn wrap<'p, W: fmt::Write>(
+        &self,
+        out: &mut Painter<'p, W>,
+        inner: impl FnOnce(&mut Painter<'p, W>) -> fmt::Result,
+    ) -> fmt::Result {
+        match self {
+            Style::Plain => inner(out),
+            Style::Bold => out.bold(inner),
+            Style::Italic => out.italic(inner),
+            Style::Code => out.green(inner),
+            Style::Heading => out.bold(|out| out.blue(inner)),
+            Style::Item => out.cyan(inner),
+            Style::Link(url) => out.link(url, |out| out.blue(inner)),
         }
     }
 }
 
-struct Paragraph<'a> {
-    pieces: Vec<Piece<'a>>,
-    words: Vec<Word>,
-    space: bool,
-}
-
-impl<'a> Paragraph<'a> {
-    fn of(inlines: &'a [Inline<'a>]) -> Paragraph<'a> {
-        let mut paragraph = Paragraph {
-            pieces: Vec::new(),
-            words: Vec::new(),
-            space: true,
-        };
-        for inline in inlines {
-            match inline {
-                Inline::Text(text, style) => paragraph.push(text, *style),
-                Inline::Space => paragraph.space = true,
-            }
-        }
-        paragraph
-    }
-
-    fn push(&mut self, text: &'a str, style: Style) {
-        self.space |= text.starts_with(char::is_whitespace);
-        for piece in text.split_whitespace() {
-            let width = core::display_width(piece);
-            match self.words.last_mut() {
-                Some(word) if !self.space => {
-                    word.pieces.end += 1;
-                    word.width += width;
-                }
-                _ => self.words.push(Word {
-                    pieces: self.pieces.len()..self.pieces.len() + 1,
-                    width,
-                }),
-            }
-            self.pieces.push(Piece { text: piece, style });
-            self.space = true;
-        }
-        self.space = text.ends_with(char::is_whitespace);
-    }
-}
-
+#[derive(Clone)]
 struct Piece<'a> {
-    text: &'a str,
-    style: Style,
+    node: Node<'a>,
+    range: Range<usize>,
+    glued: bool,
 }
 
-impl Piece<'static> {
-    const PLAIN: Piece<'static> = Piece {
-        text: "",
-        style: Style::Plain,
-    };
-    const MARKER: Piece<'static> = Piece {
-        text: "- ",
-        style: Style::List,
-    };
-    const HANGING: Piece<'static> = Piece {
-        text: "  ",
-        style: Style::Plain,
-    };
-}
+impl<'a> Piece<'a> {
+    fn split(block: Node<'a>) -> Vec<Piece<'a>> {
+        let (pieces, _) = block
+            .0
+            .descendants()
+            .map(Node)
+            .filter(|node| node.is_leaf())
+            .fold((Vec::new(), true), |(mut pieces, gap), node| {
+                let text = node.text();
+                let glued = !gap && !text.starts_with(char::is_whitespace);
+                let breaks = !node.is_code();
+                let words = text
+                    .split(|c: char| breaks && c.is_whitespace())
+                    .filter(|word| !word.is_empty());
+                pieces.extend(words.enumerate().map(|(at, word)| {
+                    let start = word.as_ptr().addr() - text.as_ptr().addr();
+                    Piece {
+                        node,
+                        range: start..start + word.len(),
+                        glued: glued && at == 0,
+                    }
+                }));
+                let gap = text.ends_with(char::is_whitespace) || (text.is_empty() && gap);
+                (pieces, gap)
+            });
+        pieces
+    }
 
-impl Display for Piece<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.style {
-            Style::Plain => write!(f, "{}", self.text),
-            Style::Code => write!(f, "{}{}{RESET}", Color::Green, self.text),
-            Style::Bold => write!(f, "{BOLD}{}{RESET}", self.text),
-            Style::Heading => write!(f, "{BOLD}{}{}{RESET}", Color::Blue, self.text),
-            Style::List => write!(f, "{}{}{RESET}", Color::Cyan, self.text),
-        }
+    fn text(&self) -> Ref<'a, str> {
+        Ref::map(self.node.text(), |text| &text[self.range.clone()])
     }
 }
 
@@ -248,6 +276,25 @@ impl Display for Piece<'_> {
 struct Word {
     pieces: Range<usize>,
     width: usize,
+}
+
+impl Word {
+    fn join(pieces: &[Piece<'_>]) -> Vec<Word> {
+        pieces
+            .chunk_by(|_, next| next.glued)
+            .scan(0, |start, run| {
+                let pieces = *start..*start + run.len();
+                *start = pieces.end;
+                Some(Word {
+                    pieces,
+                    width: run
+                        .iter()
+                        .map(|piece| core::display_width(&piece.text()))
+                        .sum(),
+                })
+            })
+            .collect()
+    }
 }
 
 impl Fragment for Word {
@@ -261,5 +308,21 @@ impl Fragment for Word {
 
     fn penalty_width(&self) -> f64 {
         0.0
+    }
+}
+
+struct Line<'l, 'a> {
+    root: Node<'a>,
+    marked: bool,
+    pieces: &'l [Piece<'a>],
+}
+
+impl Display for Line<'_, '_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut out = Painter::from(f);
+        Style::of(self.root).wrap(&mut out, |out| {
+            self.root.gutter(out, self.marked)?;
+            self.root.paint(out, self.pieces)
+        })
     }
 }

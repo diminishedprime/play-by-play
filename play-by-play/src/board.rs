@@ -1,6 +1,8 @@
 use std::fmt;
 use std::hash::Hash;
 
+use crate::painter::Painter;
+
 /// The lines shown live in the viewer's terminal.
 /// Pass it to [`Broadcast::render`](crate::Broadcast::render) whenever it
 /// changes.
@@ -34,7 +36,7 @@ pub trait Live {
     /// # Errors
     ///
     /// When `out` can't be written.
-    fn show(&self, columns: u16, out: &mut impl fmt::Write) -> fmt::Result;
+    fn show(&self, columns: u16, out: &mut Painter<'_, impl fmt::Write>) -> fmt::Result;
 }
 
 impl<T: Live> Live for &T {
@@ -44,7 +46,7 @@ impl<T: Live> Live for &T {
         T::key(self)
     }
 
-    fn show(&self, columns: u16, out: &mut impl fmt::Write) -> fmt::Result {
+    fn show(&self, columns: u16, out: &mut Painter<'_, impl fmt::Write>) -> fmt::Result {
         T::show(self, columns, out)
     }
 }

@@ -7,7 +7,7 @@ default:
     @just --list
 
 # Apply formatting and fixes
-fix: _deps
+fix: _deps _native
     cargo clippy --fix --allow-dirty --allow-staged --workspace --all-targets
     cargo fmt --all
     pnpm --dir plugin exec prettier --write --prose-wrap always --ignore-path ../.gitignore --log-level error .
@@ -16,7 +16,7 @@ fix: _deps
     pnpm exec prettier --write --log-level error 'scripts/*.mts'
 
 # Check formatting and lints
-check: _deps _plugin-icon
+check: _deps _plugin-icon _native
     parallel --tag --line-buffer --halt soon,fail=1 ::: \
         "cargo fmt --all --check" \
         "cargo clippy --workspace --all-targets -- -D warnings" \
@@ -29,11 +29,11 @@ check: _deps _plugin-icon
         "pnpm exec prettier --check 'scripts/*.mts'"
 
 # Run all tests
-test: _deps
+test: _deps _native
     cargo test --workspace --exclude play-by-play-e2e
     just e2e test
     claude plugin test plugin
-    pnpm --dir extension exec vitest run
+    TMPDIR="$(mktemp -d)" PLAY_BY_PLAY_BIN={{ justfile_directory() }}/target/debug/play-by-play pnpm --dir extension exec vitest run
 
 # Report code coverage.
 coverage:
@@ -75,6 +75,9 @@ _deps:
 
 _plugin-icon:
     sips -s format png -z 1024 1024 extension/assets/football.svg --out plugin/.claude-plugin/icon.png
+
+_native: _deps
+    pnpm --dir extension exec napi build --manifest-path native/Cargo.toml --platform --output-dir dist/native
 
 # Prepare a release
 [arg("dry_run", long="dry-run", value="--dry-run")]

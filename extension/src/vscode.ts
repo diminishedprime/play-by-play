@@ -2,8 +2,16 @@ import type * as vscode from "vscode";
 
 export type VSCodeTerminal = Pick<vscode.Terminal, "show" | "exitStatus">;
 
+export interface VSCodeTerminalOptions extends Omit<
+  vscode.TerminalOptions,
+  "location"
+> {
+  location?:
+    vscode.TerminalOptions["location"] | { parentTerminal: VSCodeTerminal };
+}
+
 export interface VSCodeWindow {
-  createTerminal(options: vscode.TerminalOptions): VSCodeTerminal;
+  createTerminal(options: VSCodeTerminalOptions): VSCodeTerminal;
   showErrorMessage(message: string): unknown;
 }
 

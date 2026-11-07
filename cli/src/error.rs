@@ -1,5 +1,4 @@
-//! Failures of `play-by-play`, and a wrapped command's failure, which exits with
-//! the command's own code.
+//! Failures of `play-by-play`.
 
 use std::io;
 use std::process::{ExitCode, Termination};
@@ -32,9 +31,6 @@ pub enum AppError {
     /// One of `doctor`'s checks failed.
     #[error("a check failed")]
     Unhealthy,
-    /// The wrapped command exited with this code, so play-by-play does too.
-    #[error("the command exited with {0}")]
-    Exited(u8),
 }
 
 /// The result of this crate's calls, failing with [`AppError`].
@@ -54,7 +50,6 @@ impl<T: Termination> Termination for AppExit<T> {
     fn report(self) -> ExitCode {
         match self.0 {
             Ok(done) => done.report(),
-            Err(AppError::Exited(code)) => ExitCode::from(code),
             Err(error) => {
                 eprintln!("play-by-play: {error}");
                 ExitCode::FAILURE

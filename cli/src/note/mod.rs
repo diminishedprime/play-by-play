@@ -18,15 +18,17 @@ pub mod source_excerpt;
 pub mod write;
 
 use std::borrow::Cow;
+use std::fmt::{self, Display, Formatter};
 use std::io::{self, Read, Write};
 
-use clap::ValueEnum;
+use play_by_play::Color;
+use play_by_play::log::Log;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cmd::note::NoteKind;
 use crate::error::AppResult;
-use crate::log::{CLEAR, Color, Log, RESET, Screen};
+use crate::log::{CLEAR, ColorWheel, Painted, Screen};
 use crate::note::agent::{AgentInput, AgentResult};
 use crate::note::edit::{EditInput, EditResult};
 use crate::note::fetch::{FetchInput, FetchResult};
@@ -41,14 +43,10 @@ use crate::note::write::{WriteInput, WriteResult};
 ///
 /// When stdin can't be read or isn't the kind's input, or the log or stdout
 /// can't be written.
-///
-/// # Panics
-///
-/// Never: every color has a name.
 pub fn header(log: &Log, kind: &NoteKind) -> AppResult {
     let mut json = String::new();
     io::stdin().read_to_string(&mut json)?;
-    let color = log.next_color()?;
+    let color = ColorWheel::turn(log)?;
     match kind {
         NoteKind::Read => serde_json::from_str::<ReadInput>(&json)?.headed(log, color),
         NoteKind::Write => serde_json::from_str::<WriteInput>(&json)?.headed(log, color),
@@ -57,8 +55,7 @@ pub fn header(log: &Log, kind: &NoteKind) -> AppResult {
         NoteKind::Search => serde_json::from_str::<SearchInput>(&json)?.headed(log, color),
         NoteKind::Agent => serde_json::from_str::<AgentInput>(&json)?.headed(log, color),
     }?;
-    let name = color.to_possible_value().expect("every color has a name");
-    writeln!(io::stdout(), "{}", name.get_name())?;
+    writeln!(io::stdout(), "{color}")?;
     Ok(())
 }
 
@@ -80,7 +77,14 @@ pub fn result(log: &Log, kind: &NoteKind, color: Color) -> AppResult {
         NoteKind::Search => serde_json::from_str::<SearchResult>(&json)?.appended(log),
         NoteKind::Agent => serde_json::from_str::<OpenResult<AgentResult>>(&json)?.appended(log),
     }?;
-    writeln!(log.append()?, "{color}{}: end{RESET}", kind.name())?;
+    writeln!(
+        log.append()?,
+        "{}",
+        Painted {
+            color,
+            text: format_args!("{}: end", kind.name())
+        }
+    )?;
     Ok(())
 }
 
@@ -133,25 +137,38 @@ pub trait Header {
     ///
     /// When the log can't be written, or this can't be shown.
     fn headed(&self, log: &Log, color: Color) -> AppResult {
-        self.header(&mut log.append()?, color, &log.screen())
+        self.header(&mut log.append()?, color, &Screen::of(log))
     }
 }
 
 /// A header that's only a title, written whole in its color.
 pub trait Title {
-    /// Writes this title into `out`.
+    /// Writes this title into `f`.
     ///
     /// # Errors
     ///
-    /// When `out` can't be written.
-    fn title(&self, out: &mut impl Write) -> AppResult;
+    /// When `f` can't be written.
+    fn title(&self, f: &mut Formatter<'_>) -> fmt::Result;
+}
+
+struct Titled<'a, T>(&'a T);
+
+impl<T: Title> Display for Titled<'_, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0.title(f)
+    }
 }
 
 impl<T: Title> Header for T {
     fn header(&self, out: &mut impl Write, color: Color, _screen: &Screen) -> AppResult {
-        write!(out, "{CLEAR}{color}")?;
-        self.title(out)?;
-        writeln!(out, "{RESET}")?;
+        writeln!(
+            out,
+            "{CLEAR}{}",
+            Painted {
+                color,
+                text: Titled(self)
+            }
+        )?;
         Ok(())
     }
 }
@@ -171,6 +188,6 @@ pub trait Body {
     ///
     /// When the log can't be written, or this can't be shown.
     fn appended(&self, log: &Log) -> AppResult {
-        self.body(&mut log.append()?, &log.screen())
+        self.body(&mut log.append()?, &Screen::of(log))
     }
 }

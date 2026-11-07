@@ -8,12 +8,13 @@ mod tmux;
 mod version;
 
 use std::env;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write as _};
 use std::io::{self, BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
+use play_by_play::{Color, Painter};
+
 use crate::error::{AppError, AppResult};
-use crate::log::{BOLD, Color, GRAY, NORMAL, RESET};
 
 use self::extension::Extension;
 use self::log::LogFolder;
@@ -121,14 +122,13 @@ impl Outcome {
     }
 }
 
-impl Display for Outcome {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mark = self.mark();
+impl Outcome {
+    fn color(&self) -> Color {
         match self {
-            Outcome::Passed => write!(f, "{mark}{}", Color::Green),
-            Outcome::Failed => write!(f, "{mark}{}", Color::Red),
-            Outcome::Warning => write!(f, "{mark}{}", Color::Yellow),
-            Outcome::Skipped => write!(f, "{mark}{GRAY}"),
+            Outcome::Passed => Color::Green,
+            Outcome::Failed => Color::Red,
+            Outcome::Warning => Color::Yellow,
+            Outcome::Skipped => Color::Gray,
         }
     }
 }
@@ -169,27 +169,47 @@ impl<'a> Assessment<'a> {
     }
 
     fn write(&self, out: &mut impl Write, colored: bool) -> io::Result<()> {
-        let (bold, normal, reset) = if colored {
-            (BOLD, NORMAL, RESET)
+        writeln!(
+            out,
+            "{}",
+            Shown {
+                assessment: self,
+                colored
+            }
+        )
+    }
+
+    fn paint(&self, out: &mut Painter<'_, impl fmt::Write>) -> fmt::Result {
+        write!(out, "  {}", self.outcome.mark())?;
+        out.paint(self.outcome.color(), |out| {
+            out.bold(|out| out.write_str(self.label))?;
+            if let Some(subject) = self.subject {
+                out.write_str(" ")?;
+                out.bold(|out| out.write_str(subject))?;
+            }
+            if !self.text.is_empty() {
+                write!(out, " {}", self.text)?;
+            }
+            if let Some(fix) = &self.fix {
+                write!(out, "\n      Fix: {fix}")?;
+            }
+            Ok(())
+        })
+    }
+}
+
+struct Shown<'a> {
+    assessment: &'a Assessment<'a>,
+    colored: bool,
+}
+
+impl Display for Shown<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.colored {
+            self.assessment.paint(&mut Painter::from(f))
         } else {
-            ("", "", "")
-        };
-        if colored {
-            write!(out, "  {}", self.outcome)?;
-        } else {
-            write!(out, "  {}", self.outcome.mark())?;
+            self.assessment.paint(&mut Painter::plain(f))
         }
-        write!(out, "{bold}{}{normal}", self.label)?;
-        if let Some(subject) = self.subject {
-            write!(out, " {bold}{subject}{normal}")?;
-        }
-        if !self.text.is_empty() {
-            write!(out, " {}", self.text)?;
-        }
-        if let Some(fix) = &self.fix {
-            write!(out, "\n      Fix: {fix}")?;
-        }
-        writeln!(out, "{reset}")
     }
 }
 

@@ -14,6 +14,7 @@ use bat::assets::HighlightingAssets;
 use memchr::memmem;
 use memmap2::Mmap;
 use notify::{Config, Event, KqueueWatcher, RecursiveMode, Watcher};
+use play_by_play::log::Log;
 use rustix::termios;
 use terminal_colorsaurus::QueryOptions;
 use tokio::runtime;
@@ -23,7 +24,7 @@ use tokio_stream::wrappers::SignalStream;
 use tokio_stream::{Stream, StreamExt};
 
 use crate::error::AppResult;
-use crate::log::{CLEAR, Log};
+use crate::log::CLEAR;
 
 /// Follows `log` until interrupted, showing what's added to it from now on.
 ///

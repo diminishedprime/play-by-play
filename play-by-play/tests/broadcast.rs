@@ -1,9 +1,9 @@
 //! Renders a [`Broadcast`] to a viewer the test plays over a socket.
 
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::io::ErrorKind;
 
-use play_by_play::{AppError, Board, Broadcast, Live};
+use play_by_play::{AppError, Board, Broadcast, Live, Painter};
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixListener;
 
@@ -16,7 +16,7 @@ impl Live for Row {
         &self.0
     }
 
-    fn show(&self, _columns: u16, out: &mut impl fmt::Write) -> fmt::Result {
+    fn show(&self, _columns: u16, out: &mut Painter<'_, impl fmt::Write>) -> fmt::Result {
         out.write_str(&self.0)
     }
 }

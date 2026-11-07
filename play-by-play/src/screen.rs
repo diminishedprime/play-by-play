@@ -62,7 +62,7 @@ impl<K: Eq + Hash + Clone> Screen<K> {
         let mut frame = self.frame();
         for line in lines {
             let drawn = frame.line(line.key());
-            line.show(columns, drawn)
+            line.show(columns, &mut drawn.into())
                 .expect("a line shows into a String");
         }
     }

@@ -13,6 +13,14 @@ async function git(...args: string[]) {
   return stdout.trim();
 }
 
+async function catchUp(dryRun: boolean) {
+  await git("pull", "--ff-only", "--quiet", "origin", "main");
+  if (!dryRun) {
+    await git("push", "--quiet", "origin", "main");
+  }
+  await git("fetch", "--quiet", "origin", "release:release");
+}
+
 async function alphaWorktree(work: string, dryRun: boolean) {
   await git("fetch", "--quiet", "origin");
   const remote = await git("for-each-ref", "--format=%(refname)", "refs/remotes/origin/alpha");
@@ -77,6 +85,8 @@ async function release(dryRun: boolean, cwd: string) {
 }
 
 const dryRun = process.argv.includes("--dry-run");
+
+await catchUp(dryRun);
 
 if (process.argv.includes("--alpha")) {
   await using dir = await mkdtempDisposable(join(tmpdir(), "play-by-play-alpha-"));

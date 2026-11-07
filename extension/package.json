@@ -2,7 +2,7 @@
   "name": "play-by-play-vscode",
   "displayName": "Play-by-Play",
   "description": "Opens the play-by-play viewer beside the editor, to follow Claude's commands live.",
-  "version": "1.0.0-alpha.16",
+  "version": "1.0.0-alpha.17",
   "publisher": "diminishedprime",
   "license": "MIT",
   "engines": {
@@ -10,8 +10,12 @@
   },
   "main": "./dist/main.js",
   "imports": {
+    "#native": "./dist/native/index.js",
     "#src/*": "./src/*.ts",
     "#test/*": "./test/*.ts"
+  },
+  "napi": {
+    "binaryName": "play-by-play"
   },
   "scripts": {
     "build": "node scripts/build.mts",
@@ -32,6 +36,7 @@
     ]
   },
   "devDependencies": {
+    "@napi-rs/cli": "^3.10.12",
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^25.9.6",
     "@types/vscode": "^1.137.0",

@@ -3,11 +3,12 @@
 use std::borrow::Cow;
 use std::io::Write;
 
+use play_by_play::Color;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::AppResult;
-use crate::log::{CLEAR, Color, RESET, Screen};
+use crate::log::{CLEAR, Painted, Screen};
 use crate::markdown::Markdown;
 use crate::note::{Body, Header, Open};
 
@@ -232,7 +233,14 @@ pub struct AgentRemote<'a> {
 impl Header for AgentInput<'_> {
     fn header(&self, out: &mut impl Write, color: Color, screen: &Screen) -> AppResult {
         let name = self.subagent_type.as_deref().unwrap_or(&self.description);
-        writeln!(out, "{CLEAR}{color}agent: {name}\nprompt:{RESET}")?;
+        writeln!(
+            out,
+            "{CLEAR}{}",
+            Painted {
+                color,
+                text: format_args!("agent: {name}\nprompt:")
+            }
+        )?;
         Markdown::write(&self.prompt, &mut *out, screen)
     }
 }

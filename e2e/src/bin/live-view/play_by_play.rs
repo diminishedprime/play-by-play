@@ -1,6 +1,6 @@
-use std::fmt;
+use std::fmt::{self, Write as _};
 
-use ::play_by_play::{Board, Live};
+use ::play_by_play::{Board, Live, Painter};
 
 use crate::downloads::{Download, Downloads};
 
@@ -11,7 +11,7 @@ impl Live for Download {
         &self.file
     }
 
-    fn show(&self, columns: u16, out: &mut impl fmt::Write) -> fmt::Result {
+    fn show(&self, columns: u16, out: &mut Painter<'_, impl fmt::Write>) -> fmt::Result {
         let room = usize::from(columns).saturating_sub(self.progress.len() + 1);
         let file = self
             .file

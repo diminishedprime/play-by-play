@@ -1,9 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["cli", "e2e", "play-by-play"]
+members = ["cli", "e2e", "extension/native", "play-by-play"]
 
 [workspace.package]
-version = "1.0.0-alpha.16"
+version = "1.0.0-alpha.17"
 
 [workspace.lints.rust]
 missing_docs = "deny"

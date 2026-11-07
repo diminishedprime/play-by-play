@@ -1,0 +1,20 @@
+[package]
+name = "play-by-play-native"
+version.workspace = true
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "3", features = ["async"] }
+napi-derive = "3"
+play-by-play = { path = "../../play-by-play" }
+prost = "0.14.4"
+tokio = { version = "1.54.1", features = ["io-util", "net"] }
+
+[build-dependencies]
+napi-build = "2"
+
+[lints]
+workspace = true

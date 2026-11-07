@@ -9,6 +9,15 @@ message Width {
   uint32 columns = 1;
 }
 
+// A command whose program claimed the viewer, sent to the VS Code extension so
+// it can open that command's follower.
+message Claimed {
+  // The pid of the play-by-play the program is live under.
+  uint32 pid = 1;
+  // The command Claude ran.
+  string command = 2;
+}
+
 // A program's board as it is now, sent on every render.
 message Lines {
   // Each line's text, in the order it's shown.

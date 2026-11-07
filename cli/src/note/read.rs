@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::borrow::Cow;
+use std::fmt::{self, Formatter};
 use std::io::Write;
 
 use serde::Deserialize;
@@ -170,9 +171,8 @@ pub enum UnchangedSource {
 }
 
 impl Title for ReadInput<'_> {
-    fn title(&self, out: &mut impl Write) -> AppResult {
-        write!(out, "read: {}", self.file_path)?;
-        Ok(())
+    fn title(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "read: {}", self.file_path)
     }
 }
 

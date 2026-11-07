@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::borrow::Cow;
+use std::fmt::{self, Formatter};
 use std::io::Write;
 
 use serde::Deserialize;
@@ -45,9 +46,8 @@ pub struct ArtifactRead<'a> {
 }
 
 impl Title for FetchInput<'_> {
-    fn title(&self, out: &mut impl Write) -> AppResult {
-        write!(out, "fetch: {}\nprompt: {}", self.url, self.prompt)?;
-        Ok(())
+    fn title(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "fetch: {}\nprompt: {}", self.url, self.prompt)
     }
 }
 

@@ -24,8 +24,8 @@ specific question, give a short overview of each section.
   full output and the real exit code. A failed command's exit line shows in red.
 - **Other tools.** Read, Write, Edit, WebFetch, WebSearch, and Agent are all
   formatted in a way that makes them nice to see.
-- **The log.** Each workspace gets its own log under `$TMPDIR/play-by-play/`,
-  named after the project folder.
+- **The log.** Each workspace gets its own log under `$TMPDIR/pbp/`, named after
+  the project folder.
 - **The viewer.** `play-by-play watch` follows the workspace's log. It records
   the terminal's width and picks a code theme close to its background. The VS
   Code extension opens it as a "Play by Play" terminal in the panel when a

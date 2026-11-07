@@ -9,6 +9,8 @@ mod board;
 mod broadcast;
 pub mod env;
 mod error;
+pub mod log;
+mod painter;
 /// The messages a program and play-by-play send each other over the
 /// socket.
 pub mod proto {
@@ -20,3 +22,4 @@ mod terminal;
 pub use board::{Board, Live};
 pub use broadcast::Broadcast;
 pub use error::{AppError, AppResult};
+pub use painter::{Color, Painter};

@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::borrow::Cow;
+use std::fmt::{self, Formatter};
 use std::io::Write;
 
 use serde::Deserialize;
@@ -46,9 +47,8 @@ pub enum WriteKind {
 }
 
 impl Title for WriteInput<'_> {
-    fn title(&self, out: &mut impl Write) -> AppResult {
-        write!(out, "write: {}", self.file_path)?;
-        Ok(())
+    fn title(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "write: {}", self.file_path)
     }
 }
 

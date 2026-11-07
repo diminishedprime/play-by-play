@@ -20,6 +20,9 @@ pub enum AppError {
     /// A play-by-play variable is set to something that invalid.
     #[error("{0} is set to {1:?}, which play-by-play can't use")]
     Variable(&'static str, String),
+    /// A name that isn't one of [`Color`](crate::Color)'s.
+    #[error("{0:?} isn't a color play-by-play paints in")]
+    Color(String),
 }
 
 /// The result of this crate's calls, failing with [`AppError`].

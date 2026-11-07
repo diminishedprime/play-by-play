@@ -4,10 +4,10 @@ pub mod hook;
 pub mod note;
 
 use clap::{Parser, Subcommand};
+use play_by_play::Color;
 
 use crate::cmd::hook::HookEvent;
 use crate::cmd::note::{NoteKind, NotePhase};
-use crate::log::Color;
 
 /// Runs Claude's commands so a viewer can follow them live
 #[derive(Parser)]

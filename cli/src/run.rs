@@ -2,68 +2,38 @@
 //! to `pbp -c '<command>'`.
 
 use std::cell::Cell;
+use std::fmt::{self, Formatter};
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::path::Path;
-use std::process::{self, Stdio};
+use std::process::{self, ExitCode, Stdio};
 
-use play_by_play::env;
+use play_by_play::log::Log;
+use play_by_play::{Color, env};
 use tokio::process::Command;
 use tokio::runtime;
 use tokio::sync::Notify;
 
 use crate::channel::Channel;
 use crate::error::{AppError, AppResult};
-use crate::log::{Color, Log, RESET, Screen};
+use crate::extension::Extension;
+use crate::log::{ColorWheel, Painted, Screen};
 use crate::note::{Header, Title};
 use crate::router::Router;
 use crate::viewer::Viewer;
 
 /// Runs `command` in zsh, writing to `log`, and routes its output to Claude and
-/// the viewer.
+/// the viewer. Exits with the command's own code.
 ///
 /// # Errors
 ///
-/// When the log can't be written or zsh can't be started; the command exiting
-/// non-zero is [`AppError::Exited`] with its code.
+/// When the log can't be written or zsh can't be started.
 ///
 /// # Panics
 ///
 /// Never: both streams are piped before they're taken.
-pub fn run(log: &Log, dir: &Path, command: &str) -> AppResult {
-    let color = log.next_color()?;
-    let viewer = Viewer::watching(log)?;
-    let live_log = log.live_path(process::id());
-    let follower = log.follower_dir(process::id());
-    let columns = log.follower_columns_path(process::id());
-    let mut log = log.append()?;
-    Prompt(command).header(&mut log, color, &Screen::UNBOUNDED)?;
-    let mut shell = Command::new("zsh");
-    shell
-        .arg("-c")
-        .arg(command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let code = runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?
-        .block_on(Tee::run(
-            shell, &log, dir, viewer, &live_log, &follower, &columns,
-        ))?;
-    // The longest exit line is 19 bytes.
-    // color 5 + "exit: " 6 + code 3 + reset 4 + newline 1
-    let mut line = [0; 32];
-    let unused = {
-        let mut rest = &mut line[..];
-        let color = if code == 0 { color } else { Color::Red };
-        writeln!(rest, "{color}exit: {code}{RESET}")?;
-        rest.len()
-    };
-    log.write_all(&line[..line.len() - unused])?;
-    match code {
-        0 => Ok(()),
-        code => Err(AppError::Exited(code)),
-    }
+pub fn run(workspace: &Log, dir: &Path, command: &str) -> AppResult<ExitCode> {
+    Ok(ExitCode::from(Prompt::new(workspace, dir, command)?.run()?))
 }
 
 /// Prints the command the `pbp -c '<command>'` on stdin holds.
@@ -82,28 +52,85 @@ pub fn unwrap() -> AppResult {
     Ok(())
 }
 
-struct Prompt<'a>(&'a str);
+struct Prompt<'a> {
+    command: &'a str,
+    workspace: &'a Log<'a>,
+    dir: &'a Path,
+    color: Color,
+    viewer: Option<Viewer>,
+    log: File,
+}
+
+impl<'a> Prompt<'a> {
+    fn new(workspace: &'a Log<'a>, dir: &'a Path, command: &'a str) -> AppResult<Prompt<'a>> {
+        Ok(Prompt {
+            command,
+            workspace,
+            dir,
+            color: ColorWheel::turn(workspace)?,
+            viewer: Viewer::watching(workspace)?,
+            log: workspace.append()?,
+        })
+    }
+
+    fn run(mut self) -> AppResult<u8> {
+        self.header(&mut &self.log, self.color, &Screen::UNBOUNDED)?;
+        let mut shell = Command::new("zsh");
+        shell
+            .arg("-c")
+            .arg(self.command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let code = runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(Tee::run(shell, &mut self))?;
+        self.footer(code)?;
+        Ok(code)
+    }
+
+    fn footer(&self, code: u8) -> AppResult {
+        // The longest exit line is 20 bytes.
+        // color 5 + "exit: " 6 + code 3 + color end 5 + newline 1
+        let mut line = [0; 32];
+        let unused = {
+            let mut rest = &mut line[..];
+            let color = if code == 0 { self.color } else { Color::Red };
+            writeln!(
+                rest,
+                "{}",
+                Painted {
+                    color,
+                    text: format_args!("exit: {code}")
+                }
+            )?;
+            rest.len()
+        };
+        (&self.log).write_all(&line[..line.len() - unused])?;
+        Ok(())
+    }
+}
 
 impl Title for Prompt<'_> {
-    fn title(&self, out: &mut impl Write) -> AppResult {
-        write!(out, "$ {}", self.0)?;
-        Ok(())
+    fn title(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "$ {}", self.command)
     }
 }
 
 struct Tee;
 
 impl Tee {
-    async fn run(
-        mut shell: Command,
-        log: &File,
-        dir: &Path,
-        viewer: Option<Viewer>,
-        live_log: &Path,
-        follower: &Path,
-        columns: &Path,
-    ) -> AppResult<u8> {
+    async fn run(mut shell: Command, prompt: &mut Prompt<'_>) -> AppResult<u8> {
+        let Prompt {
+            command,
+            workspace,
+            dir,
+            ref log,
+            ref mut viewer,
+            ..
+        } = *prompt;
         let mut watched = viewer
+            .take()
             .map(|viewer| Channel::open(dir).map(|channel| (channel, viewer)))
             .transpose()?;
         if let Some((channel, _)) = &watched {
@@ -136,9 +163,15 @@ impl Tee {
             }
             claimed.set(true);
             channel.send_columns(viewer.columns()).await?;
-            fs::create_dir_all(follower)?;
+            Extension::tell_claimed(&workspace.extension_socket_path(), command).await?;
+            let follower = workspace.follower_dir(process::id());
+            fs::create_dir_all(&follower)?;
             channel
-                .serve(File::create(live_log)?, follower, columns)
+                .serve(
+                    File::create(workspace.live_path(process::id()))?,
+                    &follower,
+                    &workspace.follower_columns_path(process::id()),
+                )
                 .await
         };
         tokio::try_join!(copying, claim)?;

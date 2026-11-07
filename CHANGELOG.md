@@ -1,3 +1,19 @@
+## 1.0.0-alpha.17 (2026-11-07)
+
+### Features
+
+- add the extension's native addon and move Log into the library
+- nest markdown styles per line through a lazy Painter
+- open a follower beside the viewer when a command claims it
+- open a follower for every command that claims the viewer
+- paint styled text through a nesting Painter
+- print where the extension listens with socket --extension
+- tell the extension when a command claims the viewer and keep logs in $TMPDIR/pbp
+
+### Bug Fixes
+
+- catch main and release up with origin before releasing
+
 ## 1.0.0-alpha.16 (2026-11-07)
 
 ### Bug Fixes

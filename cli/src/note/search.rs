@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::borrow::Cow;
+use std::fmt::{self, Formatter};
 use std::io::Write;
 
 use serde::Deserialize;
@@ -66,9 +67,8 @@ pub struct Hit<'a> {
 }
 
 impl Title for SearchInput<'_> {
-    fn title(&self, out: &mut impl Write) -> AppResult {
-        write!(out, "search: {}", self.query)?;
-        Ok(())
+    fn title(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "search: {}", self.query)
     }
 }
 

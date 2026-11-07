@@ -2,12 +2,12 @@ import {
   TerminalExitReason,
   type TerminalExitStatus,
   TerminalLocation,
-  type TerminalOptions,
 } from "vscode";
 import {
   Vscode,
   type VSCodeCommands,
   type VSCodeTerminal,
+  type VSCodeTerminalOptions,
   type VSCodeWindow,
 } from "#src/vscode";
 
@@ -29,7 +29,7 @@ class FakeCommands implements VSCodeCommands {
 }
 
 class FakeWindow implements VSCodeWindow {
-  readonly terminals: TerminalOptions[] = [];
+  readonly terminals: VSCodeTerminalOptions[] = [];
 
   readonly errors: string[] = [];
 
@@ -39,7 +39,7 @@ class FakeWindow implements VSCodeWindow {
     -readonly [Key in keyof VSCodeTerminal]: VSCodeTerminal[Key];
   }[] = [];
 
-  createTerminal(options: TerminalOptions) {
+  createTerminal(options: VSCodeTerminalOptions) {
     this.terminals.push(options);
     const terminal = {
       show: (preserveFocus?: boolean) => {
@@ -48,6 +48,14 @@ class FakeWindow implements VSCodeWindow {
       exitStatus: undefined as TerminalExitStatus | undefined,
     };
     this.opened.push(terminal);
+    return terminal;
+  }
+
+  terminal(index: number) {
+    const terminal = this.opened[index];
+    if (terminal === undefined) {
+      throw new Error(`no terminal ${String(index)} was opened`);
+    }
     return terminal;
   }
 

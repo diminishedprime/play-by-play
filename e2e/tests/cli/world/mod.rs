@@ -1,4 +1,5 @@
 mod claude;
+mod extension;
 mod ran;
 mod spawn;
 mod style;
@@ -20,6 +21,7 @@ use tokio::sync::mpsc;
 use tokio::time;
 
 pub use claude::Claude;
+pub use extension::Extension;
 pub use style::Style;
 pub use sut::Sut;
 pub use viewer::Viewer;
@@ -57,8 +59,7 @@ impl World {
         .expect("the fake tmux can be written");
         fs::set_permissions(&tmux, Permissions::from_mode(0o755))
             .expect("the fake tmux can be made runnable");
-        fs::create_dir_all(dir.path().join("play-by-play").join("tmp"))
-            .expect("the log folder can be made");
+        fs::create_dir_all(dir.path().join("pbp").join("tmp")).expect("the log folder can be made");
         World {
             viewer: None,
             follower: None,
@@ -171,10 +172,7 @@ impl World {
         )
         .expect("the log folder can be watched");
         watcher
-            .watch(
-                &self.dir().join("play-by-play"),
-                RecursiveMode::NonRecursive,
-            )
+            .watch(&self.log_folder(), RecursiveMode::NonRecursive)
             .expect("the log folder is watched");
         let _ = time::timeout(Duration::from_secs(1), async {
             while self.viewer_recorded(extension).as_deref() != Some(value)
@@ -238,11 +236,39 @@ impl World {
     }
 
     fn viewer_recorded(&self, extension: &str) -> Option<String> {
-        let file = fs::read_dir(self.dir().join("play-by-play"))
+        let file = self.viewer_files(extension).next()?;
+        Some(fs::read_to_string(file).expect("the viewer's file reads"))
+    }
+
+    pub fn extension_listens(&self) -> Extension {
+        Extension::listen(
+            &self
+                .log_folder()
+                .join(format!("{}.e.sock", self.workspace_hex())),
+        )
+    }
+
+    pub fn workspace_hex(&self) -> String {
+        let viewer = self
+            .viewer_files("viewer")
+            .next()
+            .expect("the viewer wrote its pid file");
+        let stem = viewer
+            .file_stem()
+            .expect("the viewer's pid file has a name")
+            .to_string_lossy();
+        let (_, hex) = stem
+            .rsplit_once('_')
+            .expect("the viewer's pid file is named for its workspace");
+        hex.to_owned()
+    }
+
+    fn viewer_files(&self, extension: &str) -> impl Iterator<Item = PathBuf> {
+        let extension = OsStr::new(extension).to_owned();
+        fs::read_dir(self.log_folder())
             .expect("the log folder exists")
             .map(|entry| entry.expect("the log folder lists").path())
-            .find(|path| path.extension() == Some(OsStr::new(extension)))?;
-        Some(fs::read_to_string(file).expect("the viewer's file reads"))
+            .filter(move |path| path.extension() == Some(&extension))
     }
 
     pub fn installs(&self, name: &str) {
@@ -267,7 +293,7 @@ impl World {
     }
 
     pub fn log_folder(&self) -> PathBuf {
-        self.dir().join("play-by-play")
+        self.dir().join("pbp")
     }
 
     pub fn claude_lists_plugin(&self, id: &str, version: &str, enabled: bool) {
@@ -284,11 +310,8 @@ impl World {
     }
 
     pub fn log_folder_is_read_only(&self) {
-        fs::set_permissions(
-            self.dir().join("play-by-play"),
-            Permissions::from_mode(0o555),
-        )
-        .expect("the log folder can be made read-only");
+        fs::set_permissions(self.log_folder(), Permissions::from_mode(0o555))
+            .expect("the log folder can be made read-only");
     }
 
     pub fn tmux_reports_features(&self, features: &str) {

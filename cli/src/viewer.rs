@@ -3,10 +3,11 @@
 
 use std::fs;
 
+use play_by_play::log::Log;
 use rustix::process::{self, Pid};
 
 use crate::error::AppResult;
-use crate::log::Log;
+use crate::log::Screen;
 
 /// A `play-by-play watch` following a workspace's log right now.
 pub struct Viewer {
@@ -27,7 +28,7 @@ impl Viewer {
             .and_then(Pid::from_raw)
             .filter(|pid| process::test_kill_process(*pid).is_ok())
             .map(|_| Viewer {
-                columns: log.screen().columns,
+                columns: Screen::of(log).columns,
             }))
     }
 
