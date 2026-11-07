@@ -82,7 +82,8 @@ impl<K: Eq + Hash + Clone> Broadcast<K> {
         let Some(terminal) = &mut self.terminal else {
             return Ok(());
         };
-        self.screen.refresh(board.lines(), terminal.columns());
+        self.screen
+            .refresh(board.lines(), terminal.columns(), terminal.spinner());
         match terminal.send(self.screen.block()).await {
             Err(AppError::Io(error))
                 if matches!(

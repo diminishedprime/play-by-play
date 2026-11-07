@@ -8,6 +8,7 @@ use crate::spinner::Spinner;
 pub struct Painter<'a, W> {
     out: Counted<'a, W>,
     spinners: Option<&'a mut Vec<usize>>,
+    spinner: &'static str,
     marker: Marker,
     written: Marker,
     plain: bool,
@@ -122,6 +123,7 @@ impl<'a, W: fmt::Write> From<&'a mut W> for Painter<'a, W> {
         Painter {
             out: Counted { out, len: 0 },
             spinners: None,
+            spinner: Spinner::FRAMES[0],
             marker: Marker::default(),
             written: Marker::default(),
             plain: false,
@@ -141,9 +143,14 @@ impl<'a, W: fmt::Write> Painter<'a, W> {
         }
     }
 
-    pub(crate) fn recording(out: &'a mut W, spinners: &'a mut Vec<usize>) -> Painter<'a, W> {
+    pub(crate) fn recording(
+        out: &'a mut W,
+        spinners: &'a mut Vec<usize>,
+        spinner: &'static str,
+    ) -> Painter<'a, W> {
         Painter {
             spinners: Some(spinners),
+            spinner,
             ..Painter::from(out)
         }
     }
@@ -306,10 +313,9 @@ impl<W: fmt::Write> Painter<'_, W> {
     ///
     /// When the underlying writer fails.
     pub fn spinner(&mut self) -> fmt::Result {
-        let frame = Spinner::FRAMES[0];
-        self.write_str(frame)?;
+        self.write_str(self.spinner)?;
         if let Some(spinners) = &mut self.spinners {
-            spinners.push(self.out.len - frame.len());
+            spinners.push(self.out.len - self.spinner.len());
         }
         Ok(())
     }

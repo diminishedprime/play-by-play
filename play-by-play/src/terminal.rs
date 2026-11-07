@@ -24,6 +24,7 @@ const LINES_KEY: u8 = (LINES_FIELD << 3) | LENGTH_DELIMITED;
 pub(crate) struct Terminal {
     widths: FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
     columns: u16,
+    spinner: Spinner,
     spare: Sent,
     sent: Sender<Sent>,
     written: Receiver<io::Result<Sent>>,
@@ -52,19 +53,21 @@ impl Terminal {
         };
         let (sent, to_write) = mpsc::channel(1);
         let (was_written, written) = mpsc::channel(1);
+        let spinner = Spinner::new();
         tokio::spawn(
             Writer {
                 socket,
                 latest: Sent::default(),
                 sent: to_write,
                 written: was_written,
-                spinner: Spinner::new(),
+                spinner,
             }
             .run(),
         );
         Ok(Terminal {
             widths,
             columns,
+            spinner,
             spare: Sent::default(),
             sent,
             written,
@@ -73,6 +76,10 @@ impl Terminal {
 
     pub(crate) fn columns(&self) -> u16 {
         self.columns
+    }
+
+    pub(crate) fn spinner(&self) -> &'static str {
+        self.spinner.frame()
     }
 
     pub(crate) async fn resized(&mut self) -> AppResult {

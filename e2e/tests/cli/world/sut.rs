@@ -145,6 +145,10 @@ impl Sut {
 pub struct Running(Spawned);
 
 impl Running {
+    pub async fn types(&mut self, input: &str) {
+        self.0.write(input.as_bytes()).await;
+    }
+
     pub async fn finishes(self) -> Ran {
         Ran::new(self.0.output(Vec::new()).await)
     }

@@ -1,3 +1,9 @@
+## 1.0.0-alpha.23 (2026-11-07)
+
+### Bug Fixes
+
+- keep spinners turning when their program redraws
+
 ## 1.0.0-alpha.22 (2026-11-07)
 
 ### Features

@@ -25,6 +25,7 @@ pub struct Viewer {
     screen: StdFile,
     seen: Vec<u8>,
     shown: vt100::Parser,
+    screens: Vec<Vec<String>>,
 }
 
 impl Drop for Viewer {
@@ -38,6 +39,7 @@ impl Viewer {
     pub const COLUMNS: u16 = 77;
     pub const FOLLOWER_COLUMNS: u16 = 38;
     pub const BACKGROUND: &[u8] = b"\x1b]11;rgb:0000/2b2b/3636\x1b\\";
+    const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
     pub fn start(dir: &Path, workspace: &Path) -> Viewer {
         let watch = Sut::in_terminal(dir, ["watch"]).within(workspace);
@@ -89,6 +91,7 @@ impl Viewer {
             screen,
             seen: Vec::new(),
             shown: vt100::Parser::new(Viewer::rows(), Viewer::columns(columns), 0),
+            screens: Vec::new(),
         }
     }
 
@@ -175,10 +178,47 @@ impl Viewer {
                 Some(bytes) => {
                     self.shown.process(&bytes);
                     self.seen.extend_from_slice(&bytes);
+                    let screen = self.screen_lines();
+                    if self.screens.last() != Some(&screen) {
+                        self.screens.push(screen);
+                    }
                 }
                 None => return,
             }
         }
+    }
+
+    pub fn turned_spinners_in_order(&self, rows: &[&str]) {
+        for row in rows {
+            let frames: Vec<char> = self
+                .screens
+                .iter()
+                .filter_map(|screen| Viewer::spinner_on(screen, row))
+                .collect();
+            let jumps: Vec<(char, char)> = frames
+                .windows(2)
+                .map(|pair| (pair[0], pair[1]))
+                .filter(|&(from, to)| from != to && Viewer::next_frame(from) != to)
+                .collect();
+            assert!(
+                jumps.is_empty(),
+                "row {row}'s spinner jumped {jumps:?}, its frames were {frames:?}"
+            );
+        }
+    }
+
+    fn spinner_on(screen: &[String], row: &str) -> Option<char> {
+        screen
+            .iter()
+            .find_map(|line| line.strip_prefix(row)?.strip_prefix(' ')?.chars().next())
+    }
+
+    fn next_frame(frame: char) -> char {
+        let at = Viewer::SPINNER
+            .iter()
+            .position(|&shown| shown == frame)
+            .expect("the row shows a spinner frame");
+        Viewer::SPINNER[(at + 1) % Viewer::SPINNER.len()]
     }
 
     pub fn printed(&self, text: &str) -> bool {

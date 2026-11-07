@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use tokio::time::{self, Instant, Interval};
 
+#[derive(Clone, Copy)]
 pub(crate) struct Spinner {
     started: Instant,
 }

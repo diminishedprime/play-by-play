@@ -1316,3 +1316,26 @@ async fn animates_spinners_together_while_their_program_waits() {
     running.finishes().await.succeeds();
     world.close().await;
 }
+
+#[tokio::test]
+async fn keeps_spinners_turning_when_their_program_redraws() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let mut running = world
+        .claude()
+        .starts(r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && live-view"#);
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    running.types("a ?\n").await;
+    world.follower().sees(&["a ⠹"]).await;
+    running.types("b ?\n").await;
+    world.follower().sees(&["a ⠋", "b ⠋"]).await;
+    running.types("a\nb\n").await;
+    world.follower().sees(&[]).await;
+    world.follower().turned_spinners_in_order(&["a", "b"]);
+    running.finishes().await.succeeds();
+    world.close().await;
+}

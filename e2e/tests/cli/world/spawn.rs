@@ -132,6 +132,15 @@ impl Spawned {
         }
     }
 
+    pub async fn write(&mut self, input: &[u8]) {
+        self.stdin
+            .as_mut()
+            .expect("the child's stdin is open")
+            .write_all(input)
+            .await
+            .expect("the child reads its stdin");
+    }
+
     pub async fn kill(&mut self) {
         let pid = self.pid.expect("the child is still running");
         unsafe { libc::kill(pid, libc::SIGKILL) };

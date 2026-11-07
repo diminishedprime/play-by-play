@@ -24,6 +24,7 @@ pub(crate) struct Screen<K> {
 struct Frame<'a, K> {
     screen: &'a mut Screen<K>,
     next: usize,
+    spinner: &'static str,
 }
 
 struct Shown {
@@ -59,19 +60,21 @@ impl<K: Eq + Hash + Clone> Screen<K> {
         &mut self,
         lines: impl Iterator<Item = impl Live<Key = K>>,
         columns: u16,
+        spinner: &'static str,
     ) {
-        let mut frame = self.frame();
+        let mut frame = self.frame(spinner);
         for line in lines {
             line.show(columns, &mut frame.line(line.key()))
                 .expect("a line shows into a String");
         }
     }
 
-    fn frame(&mut self) -> Frame<'_, K> {
+    fn frame(&mut self, spinner: &'static str) -> Frame<'_, K> {
         self.turn = self.turn.flip();
         Frame {
             screen: self,
             next: 0,
+            spinner,
         }
     }
 
@@ -99,7 +102,7 @@ impl<K: Eq + Hash + Clone> Frame<'_, K> {
         };
         let shown = &mut lines[at];
         shown.prepare(turn);
-        Painter::recording(&mut shown.text, &mut shown.spinners)
+        Painter::recording(&mut shown.text, &mut shown.spinners, self.spinner)
     }
 }
 
