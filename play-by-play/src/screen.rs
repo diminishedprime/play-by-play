@@ -1,9 +1,9 @@
-use std::fmt;
 use std::hash::Hash;
 
 use indexmap::IndexMap;
 
 use crate::board::Live;
+use crate::painter::Painter;
 
 use PingPong::{Ping, Pong};
 
@@ -28,6 +28,7 @@ struct Frame<'a, K> {
 
 struct Shown {
     text: String,
+    spinners: Vec<usize>,
     seen: PingPong,
 }
 
@@ -61,8 +62,7 @@ impl<K: Eq + Hash + Clone> Screen<K> {
     ) {
         let mut frame = self.frame();
         for line in lines {
-            let drawn = frame.line(line.key());
-            line.show(columns, &mut drawn.into())
+            line.show(columns, &mut frame.line(line.key()))
                 .expect("a line shows into a String");
         }
     }
@@ -75,13 +75,15 @@ impl<K: Eq + Hash + Clone> Screen<K> {
         }
     }
 
-    pub(crate) fn block(&self) -> impl Iterator<Item = &str> {
-        self.lines.values().map(|shown| shown.text.as_str())
+    pub(crate) fn block(&self) -> impl Iterator<Item = (&str, &[usize])> {
+        self.lines
+            .values()
+            .map(|shown| (shown.text.as_str(), shown.spinners.as_slice()))
     }
 }
 
 impl<K: Eq + Hash + Clone> Frame<'_, K> {
-    fn line(&mut self, key: &K) -> &mut impl fmt::Write {
+    fn line(&mut self, key: &K) -> Painter<'_, String> {
         let turn = self.screen.turn;
         let lines = &mut self.screen.lines;
         let (at, first) = match lines.get_index_of(key) {
@@ -97,7 +99,7 @@ impl<K: Eq + Hash + Clone> Frame<'_, K> {
         };
         let shown = &mut lines[at];
         shown.prepare(turn);
-        &mut shown.text
+        Painter::recording(&mut shown.text, &mut shown.spinners)
     }
 }
 
@@ -112,6 +114,7 @@ impl Shown {
     fn new(turn: PingPong) -> Shown {
         Shown {
             text: String::new(),
+            spinners: Vec::new(),
             seen: turn,
         }
     }
@@ -119,5 +122,6 @@ impl Shown {
     fn prepare(&mut self, turn: PingPong) {
         self.seen = turn;
         self.text.clear();
+        self.spinners.clear();
     }
 }

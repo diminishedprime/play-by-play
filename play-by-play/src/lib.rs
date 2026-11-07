@@ -17,6 +17,7 @@ pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/play_by_play.v1.rs"));
 }
 mod screen;
+mod spinner;
 mod terminal;
 
 pub use board::{Board, Live};

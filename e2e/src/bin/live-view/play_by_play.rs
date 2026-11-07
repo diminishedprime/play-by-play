@@ -18,7 +18,11 @@ impl Live for Download {
             .char_indices()
             .nth(room)
             .map_or(self.file.as_str(), |(at, _)| &self.file[..at]);
-        write!(out, "{file} {}", self.progress)
+        write!(out, "{file} ")?;
+        if self.progress == "?" {
+            return out.spinner();
+        }
+        out.write_str(&self.progress)
     }
 }
 

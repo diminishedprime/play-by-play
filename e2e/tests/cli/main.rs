@@ -1289,3 +1289,30 @@ async fn cuts_colored_rows_by_the_columns_they_show() {
     world.follower().sees(&[" 012345"]).await;
     world.close().await;
 }
+
+#[tokio::test]
+async fn animates_spinners_together_while_their_program_waits() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world.claude().starts(
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { printf 'a ?\nb ?\n'; read -r } | live-view"#,
+    );
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world.follower().sees(&["a ⠋", "b ⠋"]).await;
+    world.follower().sees(&["a ⠙", "b ⠙"]).await;
+    world.follower().sees(&["a ⠹", "b ⠹"]).await;
+    world.follower().sees(&["a ⠸", "b ⠸"]).await;
+    world.follower().sees(&["a ⠼", "b ⠼"]).await;
+    world.follower().sees(&["a ⠴", "b ⠴"]).await;
+    world.follower().sees(&["a ⠦", "b ⠦"]).await;
+    world.follower().sees(&["a ⠧", "b ⠧"]).await;
+    world.follower().sees(&["a ⠇", "b ⠇"]).await;
+    world.follower().sees(&["a ⠏", "b ⠏"]).await;
+    world.follower().sees(&["a ⠋", "b ⠋"]).await;
+    running.finishes().await.succeeds();
+    world.close().await;
+}

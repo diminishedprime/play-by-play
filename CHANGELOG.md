@@ -1,3 +1,9 @@
+## 1.0.0-alpha.21 (2026-11-07)
+
+### Features
+
+- animate spinners on the live board
+
 ## 1.0.0-alpha.20 (2026-11-07)
 
 ### Bug Fixes

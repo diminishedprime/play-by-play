@@ -1,16 +1,30 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write as _};
 use std::str::FromStr;
 
 use crate::error::AppError;
+use crate::spinner::Spinner;
 
 /// Writes a line's text, and the escapes that style it, into `W`.
 pub struct Painter<'a, W> {
-    out: &'a mut W,
+    out: Counted<'a, W>,
+    spinners: Option<&'a mut Vec<usize>>,
     marker: Marker,
     written: Marker,
     plain: bool,
     indent: usize,
     fresh: bool,
+}
+
+struct Counted<'a, W> {
+    out: &'a mut W,
+    len: usize,
+}
+
+impl<W: fmt::Write> fmt::Write for Counted<'_, W> {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        self.len += text.len();
+        self.out.write_str(text)
+    }
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -106,7 +120,8 @@ impl FromStr for Color {
 impl<'a, W: fmt::Write> From<&'a mut W> for Painter<'a, W> {
     fn from(out: &'a mut W) -> Painter<'a, W> {
         Painter {
-            out,
+            out: Counted { out, len: 0 },
+            spinners: None,
             marker: Marker::default(),
             written: Marker::default(),
             plain: false,
@@ -122,6 +137,13 @@ impl<'a, W: fmt::Write> Painter<'a, W> {
     pub fn plain(out: &'a mut W) -> Painter<'a, W> {
         Painter {
             plain: true,
+            ..Painter::from(out)
+        }
+    }
+
+    pub(crate) fn recording(out: &'a mut W, spinners: &'a mut Vec<usize>) -> Painter<'a, W> {
+        Painter {
+            spinners: Some(spinners),
             ..Painter::from(out)
         }
     }
@@ -260,6 +282,20 @@ impl<W: fmt::Write> Painter<'_, W> {
         self.paint(Color::Cyan, paint)
     }
 
+    /// Writes a spinner that turns while it's shown.
+    ///
+    /// # Errors
+    ///
+    /// When the underlying writer fails.
+    pub fn spinner(&mut self) -> fmt::Result {
+        let frame = Spinner::FRAMES[0];
+        self.write_str(frame)?;
+        if let Some(spinners) = &mut self.spinners {
+            spinners.push(self.out.len - frame.len());
+        }
+        Ok(())
+    }
+
     /// Paints what `paint` writes in bold.
     ///
     /// # Errors
@@ -299,9 +335,9 @@ impl<W: fmt::Write> Painter<'_, W> {
         if self.plain || from == to {
             return Ok(());
         }
-        from.bold.switch(to.bold, self.out)?;
-        from.italic.switch(to.italic, self.out)?;
-        from.underline.switch(to.underline, self.out)?;
+        from.bold.switch(to.bold, &mut self.out)?;
+        from.italic.switch(to.italic, &mut self.out)?;
+        from.underline.switch(to.underline, &mut self.out)?;
         if from.color != to.color {
             self.out
                 .write_str(to.color.map_or("\x1b[39m", Color::escape))?;
