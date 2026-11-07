@@ -6,6 +6,7 @@ pub mod cmd;
 pub mod doctor;
 pub mod drawn;
 pub mod error;
+pub mod hook;
 pub mod log;
 pub mod markdown;
 pub mod note;
@@ -16,9 +17,12 @@ pub mod viewer;
 pub mod watch;
 
 use std::env;
+use std::io;
 use std::path::PathBuf;
 
-use crate::cmd::Action::{Doctor, Follow, NoteHeader, NoteResult, Run, Unwrap, Watch, WatchInTmux};
+use crate::cmd::Action::{
+    Doctor, Follow, HookSessionStart, NoteHeader, NoteResult, Run, Unwrap, Watch, WatchInTmux,
+};
 use crate::cmd::Cli;
 use crate::error::AppResult;
 use crate::log::Log;
@@ -43,5 +47,6 @@ pub fn main(cli: Cli) -> AppResult {
         Run { command } => run::run(&log, &dir, &command),
         Unwrap => run::unwrap(),
         Doctor => doctor::doctor(&dir),
+        HookSessionStart => hook::session_start(&mut io::stdout()),
     }
 }

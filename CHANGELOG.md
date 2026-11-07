@@ -1,3 +1,9 @@
+## 1.0.0-alpha.16 (2026-11-07)
+
+### Bug Fixes
+
+- give Claude play-by-play's context from a SessionStart command hook
+
 ## 1.0.0-alpha.15 (2026-11-06)
 
 ### Features

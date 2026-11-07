@@ -41,28 +41,6 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  on(
-    "classic.SessionStart",
-    { source: ["startup", "clear", "compact"] },
-    async ($, e, next) => {
-      const started = await next(e);
-      const installed = await isInstalled($);
-      if (!installed) {
-        return started;
-      }
-      const text = await $.fs.read(`${$.plugin.root}/context/play-by-play.md`);
-      return {
-        ...started,
-        additionalContext: [...(started.additionalContext ?? []), text],
-      };
-    },
-  ).catch(($, e, next) => {
-    $.ui.log(
-      `play-by-play couldn't give claude the 411: ${next.error.message ?? next.error.kind}`,
-    );
-    return next(e);
-  });
-
   on("tool.call", { tool: "Bash" }, async ($, e, next) => {
     const installed = await isInstalled($);
     if (!installed) {

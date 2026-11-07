@@ -1,1 +1,16 @@
-{ "modules": ["./register.ts"] }
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v play-by-play >/dev/null 2>&1; then play-by-play hook session-start; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "modules": ["./register.ts"]
+}

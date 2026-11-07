@@ -1,9 +1,11 @@
 //! `play-by-play`'s arguments; the doc comments here are its `--help` text.
 
+pub mod hook;
 pub mod note;
 
 use clap::{Parser, Subcommand};
 
+use crate::cmd::hook::HookEvent;
 use crate::cmd::note::{NoteKind, NotePhase};
 use crate::log::Color;
 
@@ -67,6 +69,12 @@ pub enum Command {
         #[command(subcommand)]
         phase: NotePhase,
     },
+    /// Prints a Claude Code hook's output for play-by-play's plugin.
+    Hook {
+        /// The hook event to answer.
+        #[command(subcommand)]
+        event: HookEvent,
+    },
 }
 
 /// What `play-by-play` was asked to do, with `note`'s phase folded in.
@@ -90,6 +98,8 @@ pub enum Action {
     NoteHeader(NoteKind),
     /// Show a tool call's result, closing in its header's color.
     NoteResult(NoteKind, Color),
+    /// Print a `SessionStart` hook's output.
+    HookSessionStart,
 }
 
 impl From<Command> for Action {
@@ -106,6 +116,9 @@ impl From<Command> for Action {
             Command::Note {
                 phase: NotePhase::Result { kind, color },
             } => Action::NoteResult(kind, color),
+            Command::Hook {
+                event: HookEvent::SessionStart,
+            } => Action::HookSessionStart,
         }
     }
 }

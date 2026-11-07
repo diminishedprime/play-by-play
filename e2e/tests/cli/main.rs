@@ -147,6 +147,27 @@ async fn leaves_a_command_it_didnt_wrap_as_it_is() {
 }
 
 #[tokio::test]
+async fn gives_claude_play_by_plays_context_when_a_session_starts() {
+    let world = World::unwatched();
+
+    world
+        .sut(["hook", "session-start"])
+        .run()
+        .await
+        .succeeds()
+        .prints(
+            &json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": include_str!("../../../cli/src/play-by-play.md"),
+                },
+            })
+            .to_string(),
+        );
+    world.close().await;
+}
+
+#[tokio::test]
 async fn watches_in_the_workspaces_tmux_session() {
     let world = World::new();
 
