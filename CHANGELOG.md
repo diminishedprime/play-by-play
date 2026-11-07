@@ -1,3 +1,9 @@
+## 1.0.0-alpha.22 (2026-11-07)
+
+### Features
+
+- paint red and gray by name
+
 ## 1.0.0-alpha.21 (2026-11-07)
 
 ### Features

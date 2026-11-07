@@ -264,6 +264,24 @@ impl<W: fmt::Write> Painter<'_, W> {
         self.paint(Color::Green, paint)
     }
 
+    /// Paints what `paint` writes in red.
+    ///
+    /// # Errors
+    ///
+    /// When `paint` or the underlying writer fails.
+    pub fn red(&mut self, paint: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
+        self.paint(Color::Red, paint)
+    }
+
+    /// Paints what `paint` writes in gray.
+    ///
+    /// # Errors
+    ///
+    /// When `paint` or the underlying writer fails.
+    pub fn gray(&mut self, paint: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
+        self.paint(Color::Gray, paint)
+    }
+
     /// Paints what `paint` writes in blue.
     ///
     /// # Errors
