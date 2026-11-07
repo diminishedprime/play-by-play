@@ -129,17 +129,18 @@ impl<'a, W: fmt::Write> Painter<'a, W> {
 
 impl<W: fmt::Write> Painter<'_, W> {
     /// Writes `text` in the current style, starting each of its lines that
-    /// isn't blank at the current indent.
+    /// isn't blank at the current indent, which is never styled.
     ///
     /// # Errors
     ///
     /// When the underlying writer fails.
     pub fn write_str(&mut self, text: &str) -> fmt::Result {
         text.split_inclusive('\n').try_for_each(|line| {
-            self.switch()?;
-            if self.fresh && line != "\n" {
+            if self.fresh && self.indent > 0 && line != "\n" {
+                self.switch_to(Marker::default())?;
                 write!(self.out, "{:width$}", "", width = 2 * self.indent)?;
             }
+            self.switch()?;
             self.fresh = line.ends_with('\n');
             self.out.write_str(line)
         })
@@ -290,7 +291,11 @@ impl<W: fmt::Write> Painter<'_, W> {
     }
 
     fn switch(&mut self) -> fmt::Result {
-        let (from, to) = (self.written, self.marker);
+        self.switch_to(self.marker)
+    }
+
+    fn switch_to(&mut self, to: Marker) -> fmt::Result {
+        let from = self.written;
         if self.plain || from == to {
             return Ok(());
         }

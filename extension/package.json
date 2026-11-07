@@ -2,7 +2,7 @@
   "name": "play-by-play-vscode",
   "displayName": "Play-by-Play",
   "description": "Opens the play-by-play viewer beside the editor, to follow Claude's commands live.",
-  "version": "1.0.0-alpha.19",
+  "version": "1.0.0-alpha.20",
   "publisher": "diminishedprime",
   "license": "MIT",
   "engines": {

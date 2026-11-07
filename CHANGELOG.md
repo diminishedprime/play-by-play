@@ -1,3 +1,9 @@
+## 1.0.0-alpha.20 (2026-11-07)
+
+### Bug Fixes
+
+- write indents with every style off
+
 ## 1.0.0-alpha.19 (2026-11-07)
 
 ### Bug Fixes

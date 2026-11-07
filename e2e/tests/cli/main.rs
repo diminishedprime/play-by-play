@@ -345,6 +345,9 @@ plain code
     for painted in [
         format!("{BOLD}everything{NORMAL}"),
         format!("{CYAN}- first item{DEFAULT_COLOR}"),
+        format!(
+            "seventy-seven\r\n{DEFAULT_COLOR}  {CYAN}columns and keep going on its way{DEFAULT_COLOR}"
+        ),
         format!("{BOLD}{BLUE}Overview of {GREEN}notify{BLUE} crate{NORMAL}{DEFAULT_COLOR}"),
         format!("{GREEN}kqueue{DEFAULT_COLOR}"),
         format!("{BOLD}care{NORMAL}:"),
