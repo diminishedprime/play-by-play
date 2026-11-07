@@ -1,6 +1,6 @@
 //! Renders a [`Broadcast`] to a viewer the test plays over a socket.
 
-use std::fmt::{self, Write as _};
+use std::fmt;
 use std::io::ErrorKind;
 
 use play_by_play::{AppError, Board, Broadcast, Live, Painter};

@@ -8,7 +8,7 @@ mod tmux;
 mod version;
 
 use std::env;
-use std::fmt::{self, Display, Formatter, Write as _};
+use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 

@@ -1,6 +1,6 @@
 //! How the viewer's log is written: its terminal, colors, and escapes.
 
-use std::fmt::{self, Display, Formatter, Write as _};
+use std::fmt::{self, Display, Formatter};
 use std::fs;
 
 use play_by_play::log::Log;

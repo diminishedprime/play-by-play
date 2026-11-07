@@ -9,6 +9,8 @@ pub struct Painter<'a, W> {
     marker: Marker,
     written: Marker,
     plain: bool,
+    indent: usize,
+    fresh: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -108,6 +110,8 @@ impl<'a, W: fmt::Write> From<&'a mut W> for Painter<'a, W> {
             marker: Marker::default(),
             written: Marker::default(),
             plain: false,
+            indent: 0,
+            fresh: true,
         }
     }
 }
@@ -124,6 +128,45 @@ impl<'a, W: fmt::Write> Painter<'a, W> {
 }
 
 impl<W: fmt::Write> Painter<'_, W> {
+    /// Writes `text` in the current style, starting each of its lines that
+    /// isn't blank at the current indent.
+    ///
+    /// # Errors
+    ///
+    /// When the underlying writer fails.
+    pub fn write_str(&mut self, text: &str) -> fmt::Result {
+        text.split_inclusive('\n').try_for_each(|line| {
+            self.switch()?;
+            if self.fresh && line != "\n" {
+                write!(self.out, "{:width$}", "", width = 2 * self.indent)?;
+            }
+            self.fresh = line.ends_with('\n');
+            self.out.write_str(line)
+        })
+    }
+
+    /// Writes formatted `args` as [`Painter::write_str`] does, so `write!`
+    /// works without [`fmt::Write`] in scope.
+    ///
+    /// # Errors
+    ///
+    /// When the underlying writer fails.
+    pub fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> fmt::Result {
+        fmt::Write::write_fmt(self, args)
+    }
+
+    /// Indents each line `paint` starts by two more columns.
+    ///
+    /// # Errors
+    ///
+    /// When `paint` or the underlying writer fails.
+    pub fn indented(&mut self, paint: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
+        self.indent += 1;
+        let painted = paint(self);
+        self.indent -= 1;
+        painted
+    }
+
     /// Makes what `paint` writes an underlined link the viewer's terminal
     /// opens `url` from when it's clicked.
     ///
@@ -265,7 +308,6 @@ impl<W: fmt::Write> Painter<'_, W> {
 
 impl<W: fmt::Write> fmt::Write for Painter<'_, W> {
     fn write_str(&mut self, text: &str) -> fmt::Result {
-        self.switch()?;
-        self.out.write_str(text)
+        Painter::write_str(self, text)
     }
 }

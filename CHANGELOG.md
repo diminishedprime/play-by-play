@@ -1,3 +1,9 @@
+## 1.0.0-alpha.18 (2026-11-07)
+
+### Features
+
+- indent nested lines and write through Painter without fmt::Write in scope
+
 ## 1.0.0-alpha.17 (2026-11-07)
 
 ### Features

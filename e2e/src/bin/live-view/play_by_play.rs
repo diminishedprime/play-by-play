@@ -1,4 +1,4 @@
-use std::fmt::{self, Write as _};
+use std::fmt;
 
 use ::play_by_play::{Board, Live, Painter};
 

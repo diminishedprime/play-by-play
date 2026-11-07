@@ -1,7 +1,7 @@
 //! Markdown written for the viewer's terminal, wrapped to its width.
 
 use std::cell::Ref;
-use std::fmt::{self, Display, Formatter, Write as _};
+use std::fmt::{self, Display, Formatter};
 use std::io::Write;
 use std::ops::Range;
 
@@ -45,24 +45,14 @@ impl<'s, W: Write> Markdown<'s, W> {
             }
             match &block.data().value {
                 NodeValue::CodeBlock(code) => markdown.code(code)?,
-                NodeValue::List(_) => markdown.list(block)?,
-                _ => markdown.paragraph(Node(block), Node(block))?,
-            }
-        }
-        Ok(())
-    }
-
-    fn list<'a>(&mut self, node: &'a AstNode<'a>) -> AppResult {
-        let loose = matches!(&node.data().value, NodeValue::List(list) if !list.tight);
-        for item in node.children() {
-            for (at, block) in item.children().enumerate() {
-                if at > 0 && loose {
-                    writeln!(self.out)?;
-                }
-                match &block.data().value {
-                    NodeValue::List(_) => self.list(block)?,
-                    _ => self.paragraph(Node(item), Node(block))?,
-                }
+                _ => writeln!(
+                    markdown.out,
+                    "{}",
+                    Block {
+                        node: Node(block),
+                        columns: markdown.columns
+                    }
+                )?,
             }
         }
         Ok(())
@@ -82,27 +72,16 @@ impl<'s, W: Write> Markdown<'s, W> {
         printer.print_with_writer(Some(Text(&mut self.out)))?;
         Ok(())
     }
+}
 
-    fn paragraph<'a>(&mut self, root: Node<'a>, block: Node<'a>) -> AppResult {
-        let pieces = Piece::split(block);
-        let words = Word::join(&pieces);
-        let lines = wrap_algorithms::wrap_first_fit(&words, &[self.columns - root.indent()]);
-        let leads = root
-            .0
-            .first_child()
-            .is_some_and(|first| first.same_node(block.0));
-        for (at, line) in lines.into_iter().enumerate() {
-            let (Some(first), Some(last)) = (line.first(), line.last()) else {
-                continue;
-            };
-            let line = Line {
-                root,
-                marked: leads && at == 0,
-                pieces: &pieces[first.pieces.start..last.pieces.end],
-            };
-            writeln!(self.out, "{line}")?;
-        }
-        Ok(())
+struct Block<'a> {
+    node: Node<'a>,
+    columns: f64,
+}
+
+impl Display for Block<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.node.block(&mut Painter::from(f), self.columns)
     }
 }
 
@@ -126,24 +105,71 @@ impl<'a> Node<'a> {
         )
     }
 
-    fn is_item(self) -> bool {
-        matches!(self.0.data().value, NodeValue::Item(_))
-    }
-
     fn is_code(self) -> bool {
         matches!(self.0.data().value, NodeValue::Code(_))
     }
 
-    fn depth(self) -> usize {
-        self.0
-            .ancestors()
-            .map(Node)
-            .filter(|node| node.is_item())
-            .count()
+    fn children(self) -> impl Iterator<Item = Node<'a>> {
+        self.0.children().map(Node)
     }
 
-    fn indent(self) -> f64 {
-        f64::from(u32::try_from(2 * self.depth()).unwrap_or(u32::MAX))
+    fn block(self, out: &mut Painter<'_, impl fmt::Write>, columns: f64) -> fmt::Result {
+        let loose = match &self.0.data().value {
+            NodeValue::List(list) => Some(!list.tight),
+            _ => None,
+        };
+        match loose {
+            Some(loose) => self.list(out, columns, loose),
+            None => Style::of(self).wrap(out, |out| self.paragraph(out, columns)),
+        }
+    }
+
+    fn list(
+        self,
+        out: &mut Painter<'_, impl fmt::Write>,
+        columns: f64,
+        loose: bool,
+    ) -> fmt::Result {
+        self.children().enumerate().try_for_each(|(at, item)| {
+            if at > 0 {
+                out.write_str("\n")?;
+            }
+            Style::of(item).wrap(out, |out| item.item(out, columns, loose))
+        })
+    }
+
+    fn item(
+        self,
+        out: &mut Painter<'_, impl fmt::Write>,
+        columns: f64,
+        loose: bool,
+    ) -> fmt::Result {
+        out.write_str("- ")?;
+        out.indented(|out| {
+            self.children().enumerate().try_for_each(|(at, block)| {
+                if at > 0 {
+                    out.write_str(if loose { "\n\n" } else { "\n" })?;
+                }
+                block.block(out, columns - 2.0)
+            })
+        })
+    }
+
+    fn paragraph(self, out: &mut Painter<'_, impl fmt::Write>, columns: f64) -> fmt::Result {
+        let pieces = Piece::split(self);
+        let words = Word::join(&pieces);
+        wrap_algorithms::wrap_first_fit(&words, &[columns])
+            .into_iter()
+            .enumerate()
+            .try_for_each(|(at, line)| {
+                let (Some(first), Some(last)) = (line.first(), line.last()) else {
+                    return Ok(());
+                };
+                if at > 0 {
+                    out.write_str("\n")?;
+                }
+                self.paint(out, &pieces[first.pieces.start..last.pieces.end])
+            })
     }
 
     fn toward(self, leaf: Node<'a>) -> Option<Node<'a>> {
@@ -169,14 +195,6 @@ impl<'a> Node<'a> {
                     None => out.write_str(&run[0].text()),
                 }
             })
-    }
-
-    fn gutter(self, out: &mut Painter<'_, impl fmt::Write>, marked: bool) -> fmt::Result {
-        let Some(outer) = self.depth().checked_sub(1) else {
-            return Ok(());
-        };
-        write!(out, "{:width$}", "", width = 2 * outer)?;
-        out.write_str(if marked { "- " } else { "  " })
     }
 }
 
@@ -308,21 +326,5 @@ impl Fragment for Word {
 
     fn penalty_width(&self) -> f64 {
         0.0
-    }
-}
-
-struct Line<'l, 'a> {
-    root: Node<'a>,
-    marked: bool,
-    pieces: &'l [Piece<'a>],
-}
-
-impl Display for Line<'_, '_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut out = Painter::from(f);
-        Style::of(self.root).wrap(&mut out, |out| {
-            self.root.gutter(out, self.marked)?;
-            self.root.paint(out, self.pieces)
-        })
     }
 }
