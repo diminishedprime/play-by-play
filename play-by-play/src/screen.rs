@@ -2,7 +2,6 @@ use std::fmt;
 use std::hash::Hash;
 
 use indexmap::IndexMap;
-use indexmap::map::RawEntryApiV1;
 
 use crate::board::Live;
 
@@ -24,6 +23,7 @@ pub(crate) struct Screen<K> {
 /// cleans up, removing every line the program didn't yield this render.
 struct Frame<'a, K> {
     screen: &'a mut Screen<K>,
+    next: usize,
 }
 
 struct Shown {
@@ -69,7 +69,10 @@ impl<K: Eq + Hash + Clone> Screen<K> {
 
     fn frame(&mut self) -> Frame<'_, K> {
         self.turn = self.turn.flip();
-        Frame { screen: self }
+        Frame {
+            screen: self,
+            next: 0,
+        }
     }
 
     pub(crate) fn block(&self) -> impl Iterator<Item = &str> {
@@ -80,12 +83,19 @@ impl<K: Eq + Hash + Clone> Screen<K> {
 impl<K: Eq + Hash + Clone> Frame<'_, K> {
     fn line(&mut self, key: &K) -> &mut impl fmt::Write {
         let turn = self.screen.turn;
-        let (_, shown) = self
-            .screen
-            .lines
-            .raw_entry_mut_v1()
-            .from_key(key)
-            .or_insert_with(|| (key.clone(), Shown::new(turn)));
+        let lines = &mut self.screen.lines;
+        let (at, first) = match lines.get_index_of(key) {
+            Some(at) => (at, lines[at].seen != turn),
+            None => (lines.insert_full(key.clone(), Shown::new(turn)).0, true),
+        };
+        let at = if first {
+            lines.move_index(at, self.next);
+            self.next += 1;
+            self.next - 1
+        } else {
+            at
+        };
+        let shown = &mut lines[at];
         shown.prepare(turn);
         &mut shown.text
     }

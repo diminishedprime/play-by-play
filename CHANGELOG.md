@@ -1,3 +1,9 @@
+## 1.0.0-alpha.19 (2026-11-07)
+
+### Bug Fixes
+
+- draw a board's rows in the order it yields them
+
 ## 1.0.0-alpha.18 (2026-11-07)
 
 ### Features

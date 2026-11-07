@@ -1147,6 +1147,28 @@ async fn redraws_a_programs_rows_in_place_for_its_follower() {
 }
 
 #[tokio::test]
+async fn draws_a_programs_rows_in_the_order_it_gives_them() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let ran = world
+        .claude()
+        .runs(r#"print -r -- "$PPID" && printf 'a one\nc three\nb two\n' | live-view"#)
+        .await;
+    let pid = ran
+        .succeeds()
+        .printed()
+        .lines()
+        .next()
+        .expect("the command printed run's pid");
+
+    world.follow(pid);
+    world.follower().sees(&["a one", "b two", "c three"]).await;
+    world.close().await;
+}
+
+#[tokio::test]
 async fn clears_a_row_its_program_drops_from_its_followers_view() {
     let mut world = World::new();
 
