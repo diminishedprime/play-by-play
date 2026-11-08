@@ -165,9 +165,8 @@ impl<W: fmt::Write> Painter<'_, W> {
     /// When the underlying writer fails.
     pub fn write_str(&mut self, text: &str) -> fmt::Result {
         text.split_inclusive('\n').try_for_each(|line| {
-            if self.fresh && self.indent > 0 && line != "\n" {
-                self.switch_to(Marker::default())?;
-                write!(self.out, "{:width$}", "", width = 2 * self.indent)?;
+            if line != "\n" {
+                self.write_indent()?;
             }
             self.switch()?;
             self.fresh = line.ends_with('\n');
@@ -207,6 +206,7 @@ impl<W: fmt::Write> Painter<'_, W> {
         if self.plain {
             return paint(self);
         }
+        self.write_indent()?;
         write!(self.out, "\x1b]8;;{url}\x1b\\")?;
         self.underline(paint)?;
         self.switch()?;
@@ -346,6 +346,15 @@ impl<W: fmt::Write> Painter<'_, W> {
         self.marker = outer;
         if outer == Marker::default() {
             self.switch()?;
+        }
+        Ok(())
+    }
+
+    fn write_indent(&mut self) -> fmt::Result {
+        if self.fresh && self.indent > 0 {
+            self.switch_to(Marker::default())?;
+            write!(self.out, "{:width$}", "", width = 2 * self.indent)?;
+            self.fresh = false;
         }
         Ok(())
     }

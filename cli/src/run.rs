@@ -162,7 +162,7 @@ impl Tee {
                 () = copied.notified() => return Ok(()),
             }
             claimed.set(true);
-            channel.send_columns(viewer.columns()).await?;
+            channel.send_size(viewer.columns(), viewer.rows()).await?;
             Extension::tell_claimed(&workspace.extension_socket_path(), command).await?;
             let follower = workspace.follower_dir(process::id());
             fs::create_dir_all(&follower)?;
@@ -171,6 +171,7 @@ impl Tee {
                     File::create(workspace.live_path(process::id()))?,
                     &follower,
                     &workspace.follower_columns_path(process::id()),
+                    &workspace.follower_rows_path(process::id()),
                 )
                 .await
         };

@@ -12,6 +12,7 @@ use crate::log::Screen;
 /// A `play-by-play watch` following a workspace's log right now.
 pub struct Viewer {
     columns: u16,
+    rows: u16,
 }
 
 impl Viewer {
@@ -29,6 +30,10 @@ impl Viewer {
             .filter(|pid| process::test_kill_process(*pid).is_ok())
             .map(|_| Viewer {
                 columns: Screen::of(log).columns,
+                rows: fs::read_to_string(log.rows_path())
+                    .ok()
+                    .and_then(|rows| rows.parse().ok())
+                    .unwrap_or(u16::MAX),
             }))
     }
 
@@ -37,5 +42,12 @@ impl Viewer {
     #[must_use]
     pub fn columns(&self) -> u16 {
         self.columns
+    }
+
+    /// The height as of [`Viewer::watching`], or [`u16::MAX`] when no viewer has
+    /// said; later changes reach the program over its socket.
+    #[must_use]
+    pub fn rows(&self) -> u16 {
+        self.rows
     }
 }

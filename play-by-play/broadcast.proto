@@ -7,6 +7,8 @@ package play_by_play.v1;
 message Width {
   // How many columns the viewer's terminal has.
   uint32 columns = 1;
+  // How many rows the viewer's terminal has.
+  uint32 rows = 2;
 }
 
 // A command whose program claimed the viewer, sent to the VS Code extension so

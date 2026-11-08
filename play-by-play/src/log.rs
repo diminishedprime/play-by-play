@@ -84,6 +84,12 @@ impl<'a> Log<'a> {
         self.file(&["columns"])
     }
 
+    /// Holds the viewer's height, rewritten whenever its terminal resizes.
+    #[must_use]
+    pub fn rows_path(&self) -> PathBuf {
+        self.file(&["rows"])
+    }
+
     /// Holds the name of the code theme closest to the viewer's background.
     #[must_use]
     pub fn theme_path(&self) -> PathBuf {
@@ -114,6 +120,26 @@ impl<'a> Log<'a> {
     #[must_use]
     pub fn follower_columns_path(&self, pid: u32) -> PathBuf {
         self.follower_dir(pid).join("columns")
+    }
+
+    /// Holds the follower's height, rewritten whenever its terminal resizes.
+    #[must_use]
+    pub fn follower_rows_path(&self, pid: u32) -> PathBuf {
+        self.follower_dir(pid).join("rows")
+    }
+
+    /// Where the viewer's height is written before it's renamed into
+    /// [`Log::rows_path`], so nobody reads it half written.
+    #[must_use]
+    pub fn rows_temporary_path(&self) -> PathBuf {
+        self.file_in(&[Log::TEMPORARY], &["rows"])
+    }
+
+    /// Where the follower's height is written before it's renamed into
+    /// [`Log::follower_rows_path`], outside the follower's watched folder.
+    #[must_use]
+    pub fn follower_rows_temporary_path(&self, pid: u32) -> PathBuf {
+        self.file_in(&[Log::TEMPORARY], &[Digits::from(pid).as_str(), "rows"])
     }
 
     /// Where the viewer's width is written before it's renamed into

@@ -1,3 +1,13 @@
+## 1.0.0-alpha.24 (2026-11-08)
+
+### Features
+
+- tell a program's board how many rows its viewer has
+
+### Bug Fixes
+
+- draw an indented link's indent outside the link
+
 ## 1.0.0-alpha.23 (2026-11-07)
 
 ### Bug Fixes

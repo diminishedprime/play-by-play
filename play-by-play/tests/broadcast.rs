@@ -27,7 +27,7 @@ impl Board for Rows {
     type Key = String;
     type Line<'a> = &'a Row;
 
-    fn lines(&self) -> impl Iterator<Item = &Row> {
+    fn lines(&self, _rows: u16) -> impl Iterator<Item = &Row> {
         self.0.iter()
     }
 }

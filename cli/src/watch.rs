@@ -54,10 +54,16 @@ pub fn follow(log: &Log, pid: u32) -> AppResult {
     runtime::Builder::new_current_thread()
         .enable_io()
         .build()?
-        .block_on(Tail::from(log.live_path(pid)).follow(Columns(Recorded {
-            path: log.follower_columns_path(pid),
-            temporary: log.follower_columns_temporary_path(pid),
-        })))
+        .block_on(Tail::from(log.live_path(pid)).follow(Size {
+            columns: Recorded {
+                path: log.follower_columns_path(pid),
+                temporary: log.follower_columns_temporary_path(pid),
+            },
+            rows: Recorded {
+                path: log.follower_rows_path(pid),
+                temporary: log.follower_rows_temporary_path(pid),
+            },
+        }))
 }
 
 /// Becomes tmux, attached to the workspace's session, which is started running
@@ -87,10 +93,10 @@ impl From<PathBuf> for Tail {
 }
 
 impl Tail {
-    async fn follow(mut self, columns: Columns) -> AppResult {
+    async fn follow(mut self, size: Size) -> AppResult {
         let resizes = Wake::resizes()?;
         let hangups = Wake::hangups()?;
-        columns.record()?;
+        size.record()?;
         let changes = Wake::changes(&self.path);
         let mut stdout = io::stdout();
         self.print(&mut stdout)?;
@@ -98,7 +104,7 @@ impl Tail {
         while let Some(wake) = wakes.next().await {
             match wake {
                 Wake::Change => self.print(&mut stdout)?,
-                Wake::Resize => columns.record()?,
+                Wake::Resize => size.record()?,
                 Wake::HangUp => break,
             }
         }
@@ -131,17 +137,22 @@ impl Recorded {
     }
 }
 
-struct Columns(Recorded);
+struct Size {
+    columns: Recorded,
+    rows: Recorded,
+}
 
-impl Columns {
+impl Size {
     fn record(&self) -> AppResult {
-        self.0.write(termios::tcgetwinsize(io::stdout())?.ws_col)
+        let size = termios::tcgetwinsize(io::stdout())?;
+        self.rows.write(size.ws_row)?;
+        self.columns.write(size.ws_col)
     }
 }
 
 struct Follower {
     tail: Tail,
-    columns: Columns,
+    size: Size,
     theme: Recorded,
 }
 
@@ -149,10 +160,16 @@ impl From<&Log<'_>> for Follower {
     fn from(log: &Log<'_>) -> Follower {
         Follower {
             tail: Tail::from(log.path()),
-            columns: Columns(Recorded {
-                path: log.columns_path(),
-                temporary: log.columns_temporary_path(),
-            }),
+            size: Size {
+                columns: Recorded {
+                    path: log.columns_path(),
+                    temporary: log.columns_temporary_path(),
+                },
+                rows: Recorded {
+                    path: log.rows_path(),
+                    temporary: log.rows_temporary_path(),
+                },
+            },
             theme: Recorded {
                 path: log.theme_path(),
                 temporary: log.theme_temporary_path(),
@@ -165,7 +182,7 @@ impl Follower {
     async fn follow(mut self, file: &File) -> AppResult {
         let resizes = Wake::resizes()?;
         let hangups = Wake::hangups()?;
-        self.columns.record()?;
+        self.size.record()?;
         self.record_theme();
         let changes = Wake::changes(&self.tail.path);
         self.tail.from = Follower::last_screen(file)?;
@@ -179,7 +196,7 @@ impl Follower {
         while let Some(wake) = wakes.next().await {
             match wake {
                 Wake::Change => self.tail.print(&mut stdout)?,
-                Wake::Resize => self.columns.record()?,
+                Wake::Resize => self.size.record()?,
                 Wake::HangUp => break,
             }
         }

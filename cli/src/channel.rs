@@ -31,6 +31,12 @@ pub struct Channel {
     columns: u16,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Size {
+    columns: u16,
+    rows: u16,
+}
+
 impl Channel {
     /// Offers a socket in `dir` for one command.
     ///
@@ -65,7 +71,8 @@ impl Channel {
         Ok(())
     }
 
-    /// Tells the program the viewer's width, unless it's already gone.
+    /// Tells the program the viewer's width and height, unless it's already
+    /// gone.
     ///
     /// # Errors
     ///
@@ -74,14 +81,16 @@ impl Channel {
     /// # Panics
     ///
     /// When no program has connected through [`Channel::accept`].
-    pub async fn send_columns(&mut self, columns: u16) -> AppResult {
+    pub async fn send_size(&mut self, columns: u16, rows: u16) -> AppResult {
         let program = self
             .program
             .as_mut()
             .expect("a program connected before hearing the width");
         self.columns = columns;
         let sent = async {
-            program.write_all(&Channel::width(columns)?).await?;
+            program
+                .write_all(&Channel::width(Size { columns, rows })?)
+                .await?;
             Ok(())
         };
         Channel::unless_gone(sent.await)
@@ -89,8 +98,8 @@ impl Channel {
 
     /// Draws each of the program's [`proto::Lines`] into `live`, cut to the
     /// width the program was last told, until it disconnects. Meanwhile sends
-    /// it each width its follower records in `columns`, rereading it on every
-    /// change in the follower's `dir`.
+    /// it each size its follower records in `columns` and `rows`, rereading
+    /// them on every change in the follower's `dir`.
     ///
     /// # Errors
     ///
@@ -100,7 +109,13 @@ impl Channel {
     /// # Panics
     ///
     /// When no program has connected through [`Channel::accept`].
-    pub async fn serve(&mut self, mut live: impl Write, dir: &Path, columns: &Path) -> AppResult {
+    pub async fn serve(
+        &mut self,
+        mut live: impl Write,
+        dir: &Path,
+        columns: &Path,
+        rows: &Path,
+    ) -> AppResult {
         let width = Cell::new(self.columns);
         let (reader, mut writer) = self
             .program
@@ -125,14 +140,14 @@ impl Channel {
                 Config::default(),
             )?;
             watcher.watch(dir, RecursiveMode::NonRecursive)?;
-            let mut sent = Channel::send_recorded(&mut writer, columns, None, &width).await?;
+            let mut sent = Channel::send_recorded(&mut writer, columns, rows, None, &width).await?;
             loop {
                 let change = changes
                     .recv()
                     .await
                     .expect("the watcher keeps its sender while serve runs");
                 change?;
-                sent = Channel::send_recorded(&mut writer, columns, sent, &width).await?;
+                sent = Channel::send_recorded(&mut writer, columns, rows, sent, &width).await?;
             }
         };
         let mut widths = pin!(async { Channel::unless_gone(sending.await) });
@@ -160,25 +175,34 @@ impl Channel {
     async fn send_recorded(
         writer: &mut WriteHalf<'_>,
         columns: &Path,
-        sent: Option<u16>,
+        rows: &Path,
+        sent: Option<Size>,
         width: &Cell<u16>,
-    ) -> AppResult<Option<u16>> {
-        let recorded = fs::read_to_string(columns)
-            .ok()
-            .and_then(|recorded| recorded.parse::<u16>().ok());
+    ) -> AppResult<Option<Size>> {
+        let recorded = Channel::recorded(columns).map(|columns| Size {
+            columns,
+            rows: Channel::recorded(rows).unwrap_or(u16::MAX),
+        });
         match recorded {
-            Some(recorded_width) if recorded != sent => {
-                writer.write_all(&Channel::width(recorded_width)?).await?;
-                width.set(recorded_width);
+            Some(size) if recorded != sent => {
+                writer.write_all(&Channel::width(size)?).await?;
+                width.set(size.columns);
                 Ok(recorded)
             }
             _ => Ok(sent),
         }
     }
 
-    fn width(columns: u16) -> AppResult<BytesMut> {
+    fn recorded(path: &Path) -> Option<u16> {
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|recorded| recorded.parse().ok())
+    }
+
+    fn width(size: Size) -> AppResult<BytesMut> {
         let width = proto::Width {
-            columns: columns.into(),
+            columns: size.columns.into(),
+            rows: size.rows.into(),
         };
         let mut message = BytesMut::new();
         LengthDelimitedCodec::new().encode(Bytes::from(width.encode_to_vec()), &mut message)?;

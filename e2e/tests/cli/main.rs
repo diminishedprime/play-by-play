@@ -1059,6 +1059,29 @@ async fn follows_a_program_that_claims_the_viewer_after_its_follower_opens() {
 }
 
 #[tokio::test]
+async fn indents_a_programs_link_outside_of_the_link() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world.claude().starts(
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a 100%'; read -r } | live-view"#,
+    );
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world.follower().sees(&["a 100%", "  open"]).await;
+    assert!(
+        world
+            .follower()
+            .printed("  \x1b]8;;file:///downloads/a\x1b\\"),
+        "the indent was drawn inside the link"
+    );
+    running.finishes().await.succeeds();
+    world.close().await;
+}
+
+#[tokio::test]
 async fn recuts_a_programs_rows_when_its_follower_opens() {
     let mut world = World::new();
     let row = "0123456789".repeat(10);
@@ -1336,6 +1359,25 @@ async fn keeps_spinners_turning_when_their_program_redraws() {
     running.types("a\nb\n").await;
     world.follower().sees(&[]).await;
     world.follower().turned_spinners_in_order(&["a", "b"]);
+    running.finishes().await.succeeds();
+    world.close().await;
+}
+
+#[tokio::test]
+async fn fits_a_programs_rows_to_its_followers_height() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let mut running = world
+        .claude()
+        .starts(r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && live-view"#);
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world.follower().resize_to(Viewer::FOLLOWER_COLUMNS, 3);
+    running.types("a 1%\nb 2%\nc 3%\n").await;
+    world.follower().sees(&["a 1%", "b 2%"]).await;
     running.finishes().await.succeeds();
     world.close().await;
 }

@@ -16,10 +16,10 @@ pub trait Board {
     where
         Self: 'a;
 
-    /// Yield every line, in the order they should be drawn. If a key you yielded
-    /// last render isn't yielded this time, its line is cleared from the live
-    /// view.
-    fn lines(&self) -> impl Iterator<Item = Self::Line<'_>>;
+    /// Yield every line, in the order they should be drawn, fitting in `rows`,
+    /// the lines the viewer's terminal has room for. If a key you yielded last
+    /// render isn't yielded this time, its line is cleared from the live view.
+    fn lines(&self, rows: u16) -> impl Iterator<Item = Self::Line<'_>>;
 }
 
 /// A [`Board`] line's key and its text in the viewer's terminal.

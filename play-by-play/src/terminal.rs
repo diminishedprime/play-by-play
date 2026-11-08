@@ -24,6 +24,7 @@ const LINES_KEY: u8 = (LINES_FIELD << 3) | LENGTH_DELIMITED;
 pub(crate) struct Terminal {
     widths: FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
     columns: u16,
+    rows: u16,
     spinner: Spinner,
     spare: Sent,
     sent: Sender<Sent>,
@@ -48,7 +49,7 @@ impl Terminal {
     pub(crate) async fn connect(path: impl AsRef<Path>) -> AppResult<Terminal> {
         let (read, socket) = UnixStream::connect(path).await?.into_split();
         let mut widths = FramedRead::new(read, LengthDelimitedCodec::new());
-        let Some(columns) = Terminal::next_width(&mut widths).await? else {
+        let Some((columns, rows)) = Terminal::next_width(&mut widths).await? else {
             return Err(io::Error::from(ErrorKind::UnexpectedEof).into());
         };
         let (sent, to_write) = mpsc::channel(1);
@@ -67,6 +68,7 @@ impl Terminal {
         Ok(Terminal {
             widths,
             columns,
+            rows,
             spinner,
             spare: Sent::default(),
             sent,
@@ -78,14 +80,19 @@ impl Terminal {
         self.columns
     }
 
+    pub(crate) fn rows(&self) -> u16 {
+        self.rows
+    }
+
     pub(crate) fn spinner(&self) -> &'static str {
         self.spinner.frame()
     }
 
     pub(crate) async fn resized(&mut self) -> AppResult {
         match Terminal::next_width(&mut self.widths).await? {
-            Some(columns) => {
+            Some((columns, rows)) => {
                 self.columns = columns;
+                self.rows = rows;
                 Ok(())
             }
             None => future::pending().await,
@@ -94,12 +101,15 @@ impl Terminal {
 
     async fn next_width(
         widths: &mut FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
-    ) -> AppResult<Option<u16>> {
+    ) -> AppResult<Option<(u16, u16)>> {
         let Some(message) = widths.next().await else {
             return Ok(None);
         };
         let width = proto::Width::decode(message?)?;
-        Ok(Some(u16::try_from(width.columns)?))
+        Ok(Some((
+            u16::try_from(width.columns)?,
+            u16::try_from(width.rows)?,
+        )))
     }
 
     pub(crate) async fn send<'a>(

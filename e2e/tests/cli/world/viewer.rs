@@ -90,7 +90,7 @@ impl Viewer {
             output,
             screen,
             seen: Vec::new(),
-            shown: vt100::Parser::new(Viewer::rows(), Viewer::columns(columns), 0),
+            shown: vt100::Parser::new(Viewer::rows(Viewer::ROWS), Viewer::columns(columns), 0),
             screens: Vec::new(),
         }
     }
@@ -136,13 +136,17 @@ impl Viewer {
     }
 
     pub fn resize(&mut self, columns: u16) {
-        Viewer::size(&self.screen, columns);
-        self.shown
-            .set_size(Viewer::rows(), Viewer::columns(columns));
+        self.resize_to(columns, Viewer::ROWS);
     }
 
-    fn rows() -> NonZeroU16 {
-        NonZeroU16::new(Viewer::ROWS).expect("the screen has rows")
+    pub fn resize_to(&mut self, columns: u16, rows: u16) {
+        Viewer::size_to(&self.screen, columns, rows);
+        self.shown
+            .set_size(Viewer::rows(rows), Viewer::columns(columns));
+    }
+
+    fn rows(rows: u16) -> NonZeroU16 {
+        NonZeroU16::new(rows).expect("the screen has rows")
     }
 
     fn columns(columns: u16) -> NonZeroU16 {
@@ -150,10 +154,14 @@ impl Viewer {
     }
 
     fn size(screen: &StdFile, columns: u16) {
+        Viewer::size_to(screen, columns, Viewer::ROWS);
+    }
+
+    fn size_to(screen: &StdFile, columns: u16, rows: u16) {
         termios::tcsetwinsize(
             screen,
             Winsize {
-                ws_row: Viewer::ROWS,
+                ws_row: rows,
                 ws_col: columns,
                 ws_xpixel: 0,
                 ws_ypixel: 0,

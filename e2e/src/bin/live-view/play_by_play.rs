@@ -22,7 +22,16 @@ impl Live for Download {
         if self.progress == "?" {
             return out.spinner();
         }
-        out.write_str(&self.progress)
+        out.write_str(&self.progress)?;
+        if self.progress != "100%" {
+            return Ok(());
+        }
+        out.indented(|out| {
+            writeln!(out)?;
+            out.link(&format!("file:///downloads/{}", self.file), |out| {
+                out.write_str("open")
+            })
+        })
     }
 }
 
@@ -30,7 +39,7 @@ impl Board for Downloads {
     type Key = String;
     type Line<'a> = &'a Download;
 
-    fn lines(&self) -> impl Iterator<Item = &Download> {
-        self.0.iter()
+    fn lines(&self, rows: u16) -> impl Iterator<Item = &Download> {
+        self.0.iter().take(usize::from(rows))
     }
 }
