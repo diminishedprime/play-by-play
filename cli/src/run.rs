@@ -9,7 +9,7 @@ use std::process::{self, ExitCode, Stdio};
 
 use play_by_play::log::Log;
 use play_by_play::{Color, env};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use tokio::runtime;
 use tokio::sync::Notify;
 
@@ -120,66 +120,106 @@ struct Tee;
 
 impl Tee {
     async fn run(mut shell: Command, prompt: &mut Prompt<'_>) -> AppResult<u8> {
-        let Prompt {
-            command,
-            workspace,
-            dir,
-            ref log,
-            ref mut viewer,
-            ..
-        } = *prompt;
-        let mut watched = viewer
+        let claim = prompt
+            .viewer
             .take()
-            .map(|viewer| Channel::open(dir).map(|channel| (channel, viewer)))
+            .map(|viewer| Claim::open(prompt, viewer))
             .transpose()?;
-        if let Some((channel, _)) = &watched {
-            shell.env(env::SOCKET, channel.path());
+        if let Some(claim) = &claim {
+            shell.env(env::SOCKET, claim.channel.path());
         }
-        let mut child = match shell.spawn() {
-            Err(error) if error.kind() == ErrorKind::NotFound => return Err(AppError::NoZsh),
-            spawned => spawned?,
-        };
-        let stdout = child.stdout.take().expect("the command's stdout is piped");
-        let stderr = child.stderr.take().expect("the command's stderr is piped");
+        let mut child = Tee::spawn(shell)?;
         let copied = Notify::new();
-        let copying = async {
-            tokio::try_join!(
-                Router::new(log.try_clone()?).copy(stdout, io::stdout()),
-                Router::new(log.try_clone()?).copy(stderr, io::stderr()),
-            )?;
-            copied.notify_one();
-            AppResult::Ok(())
-        };
-        let claim = async {
-            let Some((channel, viewer)) = &mut watched else {
-                return Ok(());
-            };
-            tokio::select! {
-                biased;
-                accepted = channel.accept() => accepted?,
-                () = copied.notified() => return Ok(()),
+        let serving = async {
+            match claim {
+                Some(claim) => claim.serve(&copied).await,
+                None => Ok(()),
             }
-            let columns = workspace.follower_columns_path(process::id());
-            let rows = workspace.follower_rows_path(process::id());
-            channel
-                .send_size(viewer.columns(), viewer.rows(), &columns, &rows)
-                .await?;
-            Extension::tell_claimed(&workspace.extension_socket_path(), command).await?;
-            let follower = workspace.follower_dir(process::id());
-            fs::create_dir_all(&follower)?;
-            channel
-                .serve(
-                    File::create(workspace.live_path(process::id()))?,
-                    &follower,
-                    &columns,
-                    &rows,
-                )
-                .await
         };
-        tokio::try_join!(copying, claim)?;
+        tokio::try_join!(Tee::copy(&mut child, &prompt.log, &copied), serving)?;
         let status = child.wait().await?;
         Ok(status
             .code()
             .map_or(u8::MAX, |code| u8::try_from(code).unwrap_or(u8::MAX)))
+    }
+
+    fn spawn(mut shell: Command) -> AppResult<Child> {
+        match shell.spawn() {
+            Err(error) if error.kind() == ErrorKind::NotFound => Err(AppError::NoZsh),
+            spawned => Ok(spawned?),
+        }
+    }
+
+    async fn copy(child: &mut Child, log: &File, copied: &Notify) -> AppResult {
+        let stdout = child.stdout.take().expect("the command's stdout is piped");
+        let stderr = child.stderr.take().expect("the command's stderr is piped");
+        tokio::try_join!(
+            Router::new(log.try_clone()?).copy(stdout, io::stdout()),
+            Router::new(log.try_clone()?).copy(stderr, io::stderr()),
+        )?;
+        copied.notify_one();
+        Ok(())
+    }
+}
+
+struct Claim<'a> {
+    channel: Channel,
+    viewer: Viewer,
+    workspace: &'a Log<'a>,
+    command: &'a str,
+    live: Option<File>,
+}
+
+impl<'a> Claim<'a> {
+    fn open(prompt: &Prompt<'a>, viewer: Viewer) -> AppResult<Claim<'a>> {
+        Ok(Claim {
+            channel: Channel::open(prompt.dir)?,
+            viewer,
+            workspace: prompt.workspace,
+            command: prompt.command,
+            live: None,
+        })
+    }
+
+    async fn serve(mut self, copied: &Notify) -> AppResult {
+        loop {
+            tokio::select! {
+                biased;
+                accepted = self.channel.accept() => accepted?,
+                () = copied.notified() => return Ok(()),
+            }
+            self.serve_program().await?;
+        }
+    }
+
+    async fn serve_program(&mut self) -> AppResult {
+        let pid = process::id();
+        let columns = self.workspace.follower_columns_path(pid);
+        let rows = self.workspace.follower_rows_path(pid);
+        self.channel
+            .send_size(self.viewer.columns(), self.viewer.rows(), &columns, &rows)
+            .await?;
+        if self.live.is_none() {
+            self.live = Some(self.claim_viewer().await?);
+        }
+        let Claim {
+            channel,
+            workspace,
+            live: Some(live),
+            ..
+        } = self
+        else {
+            return Ok(());
+        };
+        channel
+            .serve(live, &workspace.follower_dir(pid), &columns, &rows)
+            .await
+    }
+
+    async fn claim_viewer(&self) -> AppResult<File> {
+        let pid = process::id();
+        Extension::tell_claimed(&self.workspace.extension_socket_path(), self.command).await?;
+        fs::create_dir_all(self.workspace.follower_dir(pid))?;
+        Ok(File::create(self.workspace.live_path(pid))?)
     }
 }

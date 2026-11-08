@@ -1106,6 +1106,26 @@ async fn draws_at_its_followers_width_for_a_program_that_never_listens_for_it() 
 }
 
 #[tokio::test]
+async fn shows_each_program_a_command_runs_in_turn() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world.claude().starts(
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print 'a one' | live-view --once; print 'b two' | live-view --once"#,
+    );
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world
+        .follower_width_becomes(pid.trim(), Viewer::FOLLOWER_COLUMNS)
+        .await;
+    running.finishes().await.succeeds();
+    world.follower().sees(&["a one", "b two"]).await;
+    world.close().await;
+}
+
+#[tokio::test]
 async fn reflows_a_programs_text_to_its_followers_width() {
     let mut world = World::new();
 

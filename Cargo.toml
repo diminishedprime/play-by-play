@@ -3,7 +3,7 @@ resolver = "3"
 members = ["cli", "e2e", "extension/native", "play-by-play"]
 
 [workspace.package]
-version = "1.0.0-alpha.26"
+version = "1.0.0-alpha.27"
 
 [workspace.lints.rust]
 missing_docs = "deny"

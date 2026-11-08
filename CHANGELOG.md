@@ -1,3 +1,9 @@
+## 1.0.0-alpha.27 (2026-11-08)
+
+### Features
+
+- serve each program a command runs in turn
+
 ## 1.0.0-alpha.26 (2026-11-08)
 
 ### Features
