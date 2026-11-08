@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter, Write as _};
 use std::str::FromStr;
 
+use similar::{ChangeTag, TextDiff};
 use unicode_width::UnicodeWidthStr;
 
 use crate::error::AppError;
@@ -427,6 +428,35 @@ impl<W: fmt::Write> Painter<'_, W> {
     /// When `paint` or the underlying writer fails.
     pub fn cyan(&mut self, paint: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
         self.paint(Color::Cyan, paint)
+    }
+
+    /// Paints the unified diff from `before` to `after`, with three lines of
+    /// context around each change: hunk headers and unchanged lines in gray,
+    /// removed lines in red, and added lines in green.
+    ///
+    /// # Errors
+    ///
+    /// When the underlying writer fails.
+    pub fn diff(&mut self, before: &str, after: &str) -> fmt::Result {
+        let diff = TextDiff::from_lines(before, after);
+        let mut first = true;
+        for hunk in diff.unified_diff().context_radius(3).iter_hunks() {
+            if !first {
+                self.write_str("\n")?;
+            }
+            first = false;
+            self.gray(|out| write!(out, "{}", hunk.header()))?;
+            for change in hunk.iter_changes() {
+                self.write_str("\n")?;
+                let line = change.value().trim_end_matches('\n');
+                match change.tag() {
+                    ChangeTag::Delete => self.red(|out| write!(out, "-{line}"))?,
+                    ChangeTag::Insert => self.green(|out| write!(out, "+{line}"))?,
+                    ChangeTag::Equal => self.gray(|out| write!(out, " {line}"))?,
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Writes a spinner that turns while it's shown.

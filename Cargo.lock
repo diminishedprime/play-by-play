@@ -1107,7 +1107,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "play-by-play"
-version = "1.0.0-alpha.27"
+version = "1.0.0-alpha.28"
 dependencies = [
  "bytes",
  "hex",
@@ -1116,6 +1116,7 @@ dependencies = [
  "prost-build",
  "protox",
  "sha2",
+ "similar",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1126,7 +1127,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-cli"
-version = "1.0.0-alpha.27"
+version = "1.0.0-alpha.28"
 dependencies = [
  "bat",
  "bytes",
@@ -1152,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-e2e"
-version = "1.0.0-alpha.27"
+version = "1.0.0-alpha.28"
 dependencies = [
  "libc",
  "notify",
@@ -1167,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-native"
-version = "1.0.0-alpha.27"
+version = "1.0.0-alpha.28"
 dependencies = [
  "napi",
  "napi-build",
@@ -1538,6 +1539,15 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "similar"
+version = "3.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2f8bec09ae8fae0f4f265a4559a9334be3929d8504e9b536df0a41302bd1733"
+dependencies = [
+ "bstr",
+]
 
 [[package]]
 name = "siphasher"

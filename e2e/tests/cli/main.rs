@@ -1082,6 +1082,30 @@ async fn indents_a_programs_link_outside_of_the_link() {
 }
 
 #[tokio::test]
+async fn paints_a_programs_diff_in_color() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world.claude().starts(
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a one->two'; read -r } | live-view"#,
+    );
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world
+        .follower()
+        .sees(&["a", "  @@ -1 +1 @@", "  -one", "  +two"])
+        .await;
+    assert!(
+        world.follower().printed("\x1b[31m-one"),
+        "the removed line wasn't drawn red"
+    );
+    running.finishes().await.succeeds();
+    world.close().await;
+}
+
+#[tokio::test]
 async fn draws_at_its_followers_width_for_a_program_that_never_listens_for_it() {
     let mut world = World::new();
     let file = "report-".repeat(6);

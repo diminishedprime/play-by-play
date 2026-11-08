@@ -1,3 +1,9 @@
+## 1.0.0-alpha.28 (2026-11-08)
+
+### Features
+
+- paint a unified diff from the painter
+
 ## 1.0.0-alpha.27 (2026-11-08)
 
 ### Features

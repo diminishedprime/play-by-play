@@ -12,6 +12,13 @@ impl Live for Download {
     }
 
     fn show(&self, columns: u16, out: &mut Painter<'_, impl fmt::Write>) -> fmt::Result {
+        if let Some((before, after)) = self.progress.split_once("->") {
+            out.write_str(&self.file)?;
+            return out.indented(|out| {
+                writeln!(out)?;
+                out.diff(&format!("{before}\n"), &format!("{after}\n"))
+            });
+        }
         if self.progress.contains(' ') {
             return out.reflowed(|out| write!(out, "{} {}", self.file, self.progress));
         }

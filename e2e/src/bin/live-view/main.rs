@@ -1,7 +1,8 @@
 //! Pretends to be a program showing its downloads live, so the e2e tests can
 //! drive the play-by-play library like a real one. Its network is stdin: each
 //! `file progress` line is a download's progress, and a line of just `file`
-//! finishes it. With `--once` it reads all of stdin before rendering a single
+//! finishes it. A progress of `old->new` shows the diff between the two. With
+//! `--once` it reads all of stdin before rendering a single
 //! time, never listening for the viewer's width.
 
 mod downloader;
