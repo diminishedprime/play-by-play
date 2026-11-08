@@ -956,7 +956,7 @@ async fn offers_no_socket_once_the_viewer_has_gone() {
 }
 
 #[tokio::test]
-async fn keeps_a_live_programs_lines_out_of_the_viewer() {
+async fn shows_a_live_programs_lines_in_the_viewer() {
     let mut world = World::new();
 
     world.installs("live-view");
@@ -970,7 +970,7 @@ async fn keeps_a_live_programs_lines_out_of_the_viewer() {
 
     world
         .viewer()
-        .sees(&["$ print 'a one' | live-view", "exit: 0"])
+        .sees(&["$ print 'a one' | live-view", "downloading a", "exit: 0"])
         .await;
     world.close().await;
 }

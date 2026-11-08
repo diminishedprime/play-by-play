@@ -1,3 +1,9 @@
+## 1.0.0-alpha.26 (2026-11-08)
+
+### Features
+
+- show a live program's output in the viewer too
+
 ## 1.0.0-alpha.25 (2026-11-08)
 
 ### Features

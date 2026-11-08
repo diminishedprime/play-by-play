@@ -1,7 +1,6 @@
 //! What every Bash command Claude runs goes through: the plugin rewrites each one
 //! to `pbp -c '<command>'`.
 
-use std::cell::Cell;
 use std::fmt::{self, Formatter};
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
@@ -142,12 +141,11 @@ impl Tee {
         };
         let stdout = child.stdout.take().expect("the command's stdout is piped");
         let stderr = child.stderr.take().expect("the command's stderr is piped");
-        let claimed = Cell::new(false);
         let copied = Notify::new();
         let copying = async {
             tokio::try_join!(
-                Router::new(log.try_clone()?, &claimed).copy(stdout, io::stdout()),
-                Router::new(log.try_clone()?, &claimed).copy(stderr, io::stderr()),
+                Router::new(log.try_clone()?).copy(stdout, io::stdout()),
+                Router::new(log.try_clone()?).copy(stderr, io::stderr()),
             )?;
             copied.notify_one();
             AppResult::Ok(())
@@ -161,7 +159,6 @@ impl Tee {
                 accepted = channel.accept() => accepted?,
                 () = copied.notified() => return Ok(()),
             }
-            claimed.set(true);
             let columns = workspace.follower_columns_path(process::id());
             let rows = workspace.follower_rows_path(process::id());
             channel

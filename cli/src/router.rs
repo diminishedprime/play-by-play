@@ -1,6 +1,5 @@
 //! Where a command's output goes.
 
-use std::cell::Cell;
 use std::fs::File;
 use std::io::Write;
 
@@ -8,22 +7,21 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::error::AppResult;
 
-/// Splits a command's output between Claude and the viewer.
-pub struct Router<'a> {
+/// Copies a command's output to both Claude and the viewer.
+pub struct Router {
     log: File,
-    claimed: &'a Cell<bool>,
 }
 
-impl<'a> Router<'a> {
-    /// A router into `log`, until the command's program sets `claimed`.
+impl Router {
+    /// A router into `log`.
     #[must_use]
-    pub fn new(log: File, claimed: &'a Cell<bool>) -> Router<'a> {
-        Router { log, claimed }
+    pub fn new(log: File) -> Router {
+        Router { log }
     }
 
-    /// Copies everything `output` produces to `claude` as it arrives, and to the
-    /// log until the program claims the viewer, so the viewer doesn't get both its
-    /// plain lines and its live block.
+    /// Copies everything `output` produces to `claude` and to the log as it
+    /// arrives, whether or not the program claimed the viewer, since its live
+    /// block goes to its follower instead.
     ///
     /// # Errors
     ///
@@ -41,9 +39,7 @@ impl<'a> Router<'a> {
             }
             claude.write_all(&chunk[..read])?;
             claude.flush()?;
-            if !self.claimed.get() {
-                self.log.write_all(&chunk[..read])?;
-            }
+            self.log.write_all(&chunk[..read])?;
         }
     }
 }
