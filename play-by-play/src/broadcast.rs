@@ -82,6 +82,7 @@ impl<K: Eq + Hash + Clone> Broadcast<K> {
         let Some(terminal) = &mut self.terminal else {
             return Ok(());
         };
+        terminal.catch_up().await?;
         self.screen.refresh(
             board.lines(terminal.rows().saturating_sub(1)),
             terminal.columns(),

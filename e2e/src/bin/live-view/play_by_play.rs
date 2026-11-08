@@ -12,6 +12,9 @@ impl Live for Download {
     }
 
     fn show(&self, columns: u16, out: &mut Painter<'_, impl fmt::Write>) -> fmt::Result {
+        if self.progress.contains(' ') {
+            return out.reflowed(|out| write!(out, "{} {}", self.file, self.progress));
+        }
         let room = usize::from(columns).saturating_sub(self.progress.len() + 1);
         let file = self
             .file

@@ -18,12 +18,21 @@ impl Downloader {
         }
     }
 
+    pub async fn run_once(mut self) {
+        while let Some(event) = self.network.next().await {
+            self.apply(event);
+        }
+        self.broadcast
+            .render(&self.downloads)
+            .await
+            .expect("the broadcast renders");
+    }
+
     pub async fn run(mut self) {
         loop {
             tokio::select! {
                 event = self.network.next() => match event {
-                    Some(Event::Progress { file, progress }) => self.progress(file, progress),
-                    Some(Event::Finished { file }) => self.downloads.finish(&file),
+                    Some(event) => self.apply(event),
                     None => return,
                 },
                 resized = self.broadcast.resized() => resized.expect("the viewer's width arrives"),
@@ -32,6 +41,13 @@ impl Downloader {
                 .render(&self.downloads)
                 .await
                 .expect("the broadcast renders");
+        }
+    }
+
+    fn apply(&mut self, event: Event) {
+        match event {
+            Event::Progress { file, progress } => self.progress(file, progress),
+            Event::Finished { file } => self.downloads.finish(&file),
         }
     }
 

@@ -99,6 +99,22 @@ impl Terminal {
         }
     }
 
+    pub(crate) async fn catch_up(&mut self) -> AppResult {
+        loop {
+            tokio::select! {
+                biased;
+                width = Terminal::next_width(&mut self.widths) => match width? {
+                    Some((columns, rows)) => {
+                        self.columns = columns;
+                        self.rows = rows;
+                    }
+                    None => return Ok(()),
+                },
+                () = async {} => return Ok(()),
+            }
+        }
+    }
+
     async fn next_width(
         widths: &mut FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
     ) -> AppResult<Option<(u16, u16)>> {

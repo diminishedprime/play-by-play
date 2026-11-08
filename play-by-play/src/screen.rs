@@ -64,7 +64,7 @@ impl<K: Eq + Hash + Clone> Screen<K> {
     ) {
         let mut frame = self.frame(spinner);
         for line in lines {
-            line.show(columns, &mut frame.line(line.key()))
+            line.show(columns, &mut frame.line(line.key(), columns))
                 .expect("a line shows into a String");
         }
     }
@@ -86,7 +86,7 @@ impl<K: Eq + Hash + Clone> Screen<K> {
 }
 
 impl<K: Eq + Hash + Clone> Frame<'_, K> {
-    fn line(&mut self, key: &K) -> Painter<'_, String> {
+    fn line(&mut self, key: &K, columns: u16) -> Painter<'_, String> {
         let turn = self.screen.turn;
         let lines = &mut self.screen.lines;
         let (at, first) = match lines.get_index_of(key) {
@@ -102,7 +102,7 @@ impl<K: Eq + Hash + Clone> Frame<'_, K> {
         };
         let shown = &mut lines[at];
         shown.prepare(turn);
-        Painter::recording(&mut shown.text, &mut shown.spinners, self.spinner)
+        Painter::recording(&mut shown.text, &mut shown.spinners, self.spinner, columns)
     }
 }
 

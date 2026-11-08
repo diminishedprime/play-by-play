@@ -1,6 +1,8 @@
 use std::fmt::{self, Display, Formatter, Write as _};
 use std::str::FromStr;
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::error::AppError;
 use crate::spinner::Spinner;
 
@@ -14,6 +16,16 @@ pub struct Painter<'a, W> {
     plain: bool,
     indent: usize,
     fresh: bool,
+    columns: usize,
+    column: usize,
+    linking: Option<String>,
+    reflow: Option<Vec<Run>>,
+}
+
+struct Run {
+    text: String,
+    marker: Marker,
+    link: Option<String>,
 }
 
 struct Counted<'a, W> {
@@ -129,6 +141,10 @@ impl<'a, W: fmt::Write> From<&'a mut W> for Painter<'a, W> {
             plain: false,
             indent: 0,
             fresh: true,
+            columns: usize::MAX,
+            column: 0,
+            linking: None,
+            reflow: None,
         }
     }
 }
@@ -147,10 +163,12 @@ impl<'a, W: fmt::Write> Painter<'a, W> {
         out: &'a mut W,
         spinners: &'a mut Vec<usize>,
         spinner: &'static str,
+        columns: u16,
     ) -> Painter<'a, W> {
         Painter {
             spinners: Some(spinners),
             spinner,
+            columns: usize::from(columns),
             ..Painter::from(out)
         }
     }
@@ -164,14 +182,112 @@ impl<W: fmt::Write> Painter<'_, W> {
     ///
     /// When the underlying writer fails.
     pub fn write_str(&mut self, text: &str) -> fmt::Result {
+        let Some(runs) = &mut self.reflow else {
+            return self.emit(text);
+        };
+        match runs.last_mut() {
+            Some(run) if run.marker == self.marker && run.link == self.linking => {
+                run.text.push_str(text);
+            }
+            _ => runs.push(Run {
+                text: text.to_owned(),
+                marker: self.marker,
+                link: self.linking.clone(),
+            }),
+        }
+        Ok(())
+    }
+
+    fn emit(&mut self, text: &str) -> fmt::Result {
         text.split_inclusive('\n').try_for_each(|line| {
             if line != "\n" {
                 self.write_indent()?;
             }
             self.switch()?;
             self.fresh = line.ends_with('\n');
+            self.column = match line.strip_suffix('\n') {
+                Some(_) => 0,
+                None => self.column + line.width(),
+            };
             self.out.write_str(line)
         })
+    }
+
+    /// Reflows what `paint` writes to the viewer's width: its text breaks
+    /// between words onto new lines at the current indent, keeping each
+    /// word's style and link.
+    ///
+    /// # Errors
+    ///
+    /// When `paint` or the underlying writer fails.
+    pub fn reflowed(&mut self, paint: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
+        if self.reflow.is_some() || self.plain {
+            return paint(self);
+        }
+        self.reflow = Some(Vec::new());
+        let painted = paint(self);
+        let runs = self.reflow.take().unwrap_or_default();
+        painted?;
+        let outer = self.marker;
+        let mut word = Vec::new();
+        let mut spaces = 0;
+        for run in &runs {
+            let mut rest = run.text.as_str();
+            while !rest.is_empty() {
+                let end = rest.find([' ', '\n']).unwrap_or(rest.len());
+                if end > 0 {
+                    word.push((run, &rest[..end]));
+                }
+                match rest[end..].chars().next() {
+                    Some(' ') => {
+                        self.place(&mut word, &mut spaces)?;
+                        spaces += 1;
+                    }
+                    Some(_) => {
+                        self.place(&mut word, &mut spaces)?;
+                        spaces = 0;
+                        self.marker = Marker::default();
+                        self.emit("\n")?;
+                    }
+                    None => {}
+                }
+                rest = &rest[(end + 1).min(rest.len())..];
+            }
+        }
+        self.place(&mut word, &mut spaces)?;
+        self.marker = outer;
+        Ok(())
+    }
+
+    fn place(&mut self, word: &mut Vec<(&Run, &str)>, spaces: &mut usize) -> fmt::Result {
+        if word.is_empty() {
+            return Ok(());
+        }
+        let width: usize = word.iter().map(|(_, piece)| piece.width()).sum();
+        let start = 2 * self.indent;
+        let column = if self.fresh { start } else { self.column };
+        self.marker = Marker::default();
+        if *spaces > 0 && column > start && column + *spaces + width > self.columns {
+            self.emit("\n")?;
+        } else if *spaces > 0 {
+            self.emit(&" ".repeat(*spaces))?;
+        }
+        *spaces = 0;
+        for (run, piece) in word.drain(..) {
+            self.marker = run.marker;
+            match &run.link {
+                Some(url) => {
+                    self.write_indent()?;
+                    write!(self.out, "\x1b]8;;{url}\x1b\\")?;
+                    self.emit(piece)?;
+                    self.marker = Marker::default();
+                    self.switch()?;
+                    self.out.write_str("\x1b]8;;\x1b\\")?;
+                }
+                None => self.emit(piece)?,
+            }
+        }
+        Ok(())
     }
 
     /// Writes formatted `args` as [`Painter::write_str`] does, so `write!`
@@ -205,6 +321,12 @@ impl<W: fmt::Write> Painter<'_, W> {
     pub fn link(&mut self, url: &str, paint: impl FnOnce(&mut Self) -> fmt::Result) -> fmt::Result {
         if self.plain {
             return paint(self);
+        }
+        if self.reflow.is_some() {
+            let outer = self.linking.replace(url.to_owned());
+            let painted = self.underline(paint);
+            self.linking = outer;
+            return painted;
         }
         self.write_indent()?;
         write!(self.out, "\x1b]8;;{url}\x1b\\")?;
@@ -313,6 +435,9 @@ impl<W: fmt::Write> Painter<'_, W> {
     ///
     /// When the underlying writer fails.
     pub fn spinner(&mut self) -> fmt::Result {
+        if self.reflow.is_some() {
+            return self.write_str(self.spinner);
+        }
         self.write_str(self.spinner)?;
         if let Some(spinners) = &mut self.spinners {
             spinners.push(self.out.len - self.spinner.len());
@@ -355,6 +480,7 @@ impl<W: fmt::Write> Painter<'_, W> {
             self.switch_to(Marker::default())?;
             write!(self.out, "{:width$}", "", width = 2 * self.indent)?;
             self.fresh = false;
+            self.column = 2 * self.indent;
         }
         Ok(())
     }
@@ -365,7 +491,7 @@ impl<W: fmt::Write> Painter<'_, W> {
 
     fn switch_to(&mut self, to: Marker) -> fmt::Result {
         let from = self.written;
-        if self.plain || from == to {
+        if self.plain || self.reflow.is_some() || from == to {
             return Ok(());
         }
         from.bold.switch(to.bold, &mut self.out)?;

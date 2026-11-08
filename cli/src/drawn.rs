@@ -23,8 +23,8 @@ impl Drawn {
         }
     }
 
-    /// Replaces the last block in `live` with `lines`, each cut to `columns`.
-    /// A new width clears the whole screen first.
+    /// Replaces the last block in `live` with `lines`, each line of each cut to
+    /// `columns`. A new width clears the whole screen first.
     ///
     /// # Errors
     ///
@@ -36,13 +36,14 @@ impl Drawn {
         } else if self.lines > 0 {
             write!(self.frame, "\x1b[{}F\x1b[J", self.lines)?;
         }
-        self.lines = lines.len();
+        self.lines = 0;
         self.columns = columns;
-        for line in lines {
+        for line in lines.iter().flat_map(|row| row.split('\n')) {
             self.frame.extend_from_slice(
                 console::truncate_str(line, usize::from(columns), "").as_bytes(),
             );
             self.frame.push(b'\n');
+            self.lines += 1;
         }
         live.write_all(&self.frame)?;
         Ok(())

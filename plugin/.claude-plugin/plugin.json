@@ -1,6 +1,6 @@
 {
   "name": "play-by-play",
-  "version": "1.0.0-alpha.24",
+  "version": "1.0.0-alpha.25",
   "author": { "name": "diminishedprime" },
   "description": "Shows every tool call Claude makes live in a terminal running `play-by-play watch`"
 }

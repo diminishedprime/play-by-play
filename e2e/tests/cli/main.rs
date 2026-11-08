@@ -1082,6 +1082,50 @@ async fn indents_a_programs_link_outside_of_the_link() {
 }
 
 #[tokio::test]
+async fn draws_at_its_followers_width_for_a_program_that_never_listens_for_it() {
+    let mut world = World::new();
+    let file = "report-".repeat(6);
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world.claude().starts(&format!(
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print '{file} 50%' | live-view --once"#
+    ));
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world
+        .follower_width_becomes(pid.trim(), Viewer::FOLLOWER_COLUMNS)
+        .await;
+    running.finishes().await.succeeds();
+    world
+        .follower()
+        .sees(&[&format!("{} 50%", &file[..34])])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
+async fn reflows_a_programs_text_to_its_followers_width() {
+    let mut world = World::new();
+
+    world.installs("live-view");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world.claude().starts(
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a queued behind three other downloads today'; read -r } | live-view"#,
+    );
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world
+        .follower()
+        .sees(&["a queued behind three other downloads", "today"])
+        .await;
+    running.finishes().await.succeeds();
+    world.close().await;
+}
+
+#[tokio::test]
 async fn recuts_a_programs_rows_when_its_follower_opens() {
     let mut world = World::new();
     let row = "0123456789".repeat(10);

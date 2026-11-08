@@ -1,3 +1,9 @@
+## 1.0.0-alpha.25 (2026-11-08)
+
+### Features
+
+- reflow a board's text to its follower's width
+
 ## 1.0.0-alpha.24 (2026-11-08)
 
 ### Features

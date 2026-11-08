@@ -13,9 +13,10 @@ async fn sends_the_viewers_width_to_a_program_that_already_left() {
     let program = UnixStream::connect(channel.path()).expect("the program connects");
     channel.accept().await.expect("the program is accepted");
     drop(program);
+    let unfollowed = dir.path().join("unfollowed");
 
     channel
-        .send_size(77, 24)
+        .send_size(77, 24, &unfollowed, &unfollowed)
         .await
         .expect("the size goes nowhere without failing");
 }
@@ -32,8 +33,9 @@ async fn finishes_serving_a_program_that_left_before_its_followers_width() {
     let mut channel = Channel::open(dir.path()).expect("the channel opens");
     let mut program = UnixStream::connect(channel.path()).expect("the program connects");
     channel.accept().await.expect("the program is accepted");
+    let unfollowed = dir.path().join("unfollowed");
     channel
-        .send_size(77, 24)
+        .send_size(77, 24, &unfollowed, &unfollowed)
         .await
         .expect("the viewer's size is sent");
     let mut size = [0; 8];

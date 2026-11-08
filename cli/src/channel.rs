@@ -29,6 +29,7 @@ pub struct Channel {
     listener: UnixListener,
     program: Option<UnixStream>,
     columns: u16,
+    sent: Option<Size>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -51,6 +52,7 @@ impl Channel {
             listener,
             program: None,
             columns: 0,
+            sent: None,
         })
     }
 
@@ -71,8 +73,9 @@ impl Channel {
         Ok(())
     }
 
-    /// Tells the program the viewer's width and height, unless it's already
-    /// gone.
+    /// Tells the program the size its follower records in `follower_columns`
+    /// and `follower_rows`, or the viewer's `columns` and `rows` while no
+    /// follower has, unless it's already gone.
     ///
     /// # Errors
     ///
@@ -81,16 +84,23 @@ impl Channel {
     /// # Panics
     ///
     /// When no program has connected through [`Channel::accept`].
-    pub async fn send_size(&mut self, columns: u16, rows: u16) -> AppResult {
+    pub async fn send_size(
+        &mut self,
+        columns: u16,
+        rows: u16,
+        follower_columns: &Path,
+        follower_rows: &Path,
+    ) -> AppResult {
         let program = self
             .program
             .as_mut()
             .expect("a program connected before hearing the width");
-        self.columns = columns;
+        let size = Channel::recorded_size(follower_columns, follower_rows)
+            .unwrap_or(Size { columns, rows });
+        self.columns = size.columns;
+        self.sent = Some(size);
         let sent = async {
-            program
-                .write_all(&Channel::width(Size { columns, rows })?)
-                .await?;
+            program.write_all(&Channel::width(size)?).await?;
             Ok(())
         };
         Channel::unless_gone(sent.await)
@@ -117,6 +127,7 @@ impl Channel {
         rows: &Path,
     ) -> AppResult {
         let width = Cell::new(self.columns);
+        let first = self.sent;
         let (reader, mut writer) = self
             .program
             .as_mut()
@@ -140,7 +151,8 @@ impl Channel {
                 Config::default(),
             )?;
             watcher.watch(dir, RecursiveMode::NonRecursive)?;
-            let mut sent = Channel::send_recorded(&mut writer, columns, rows, None, &width).await?;
+            let mut sent =
+                Channel::send_recorded(&mut writer, columns, rows, first, &width).await?;
             loop {
                 let change = changes
                     .recv()
@@ -179,10 +191,7 @@ impl Channel {
         sent: Option<Size>,
         width: &Cell<u16>,
     ) -> AppResult<Option<Size>> {
-        let recorded = Channel::recorded(columns).map(|columns| Size {
-            columns,
-            rows: Channel::recorded(rows).unwrap_or(u16::MAX),
-        });
+        let recorded = Channel::recorded_size(columns, rows);
         match recorded {
             Some(size) if recorded != sent => {
                 writer.write_all(&Channel::width(size)?).await?;
@@ -191,6 +200,13 @@ impl Channel {
             }
             _ => Ok(sent),
         }
+    }
+
+    fn recorded_size(columns: &Path, rows: &Path) -> Option<Size> {
+        Channel::recorded(columns).map(|columns| Size {
+            columns,
+            rows: Channel::recorded(rows).unwrap_or(u16::MAX),
+        })
     }
 
     fn recorded(path: &Path) -> Option<u16> {
