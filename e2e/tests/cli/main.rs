@@ -885,9 +885,10 @@ async fn offers_a_command_a_socket_while_a_viewer_watches() {
 #[tokio::test]
 async fn tells_the_extension_which_command_claimed_the_viewer() {
     let world = World::new();
-    let command = r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && print 'a one' | live-view"#;
+    let command =
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && print 'a one' | pbp-test downloads"#;
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let extension = world.extension_listens();
     world.claude().runs(command).await.succeeds();
@@ -959,18 +960,22 @@ async fn offers_no_socket_once_the_viewer_has_gone() {
 async fn shows_a_live_programs_lines_in_the_viewer() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     world
         .claude()
-        .runs("print 'a one' | live-view")
+        .runs("print 'a one' | pbp-test downloads")
         .await
         .succeeds()
         .prints("downloading a\n");
 
     world
         .viewer()
-        .sees(&["$ print 'a one' | live-view", "downloading a", "exit: 0"])
+        .sees(&[
+            "$ print 'a one' | pbp-test downloads",
+            "downloading a",
+            "exit: 0",
+        ])
         .await;
     world.close().await;
 }
@@ -1012,11 +1017,11 @@ async fn shows_the_viewer_a_commands_errors_and_keeps_them_on_stderr() {
 async fn narrates_to_claude_while_nobody_watches() {
     let world = World::unwatched();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
 
     world
         .claude()
-        .runs(r"printf 'a one\nb two\n' | live-view")
+        .runs(r"printf 'a one\nb two\n' | pbp-test downloads")
         .await
         .succeeds()
         .prints("downloading a\ndownloading b\n");
@@ -1027,11 +1032,11 @@ async fn narrates_to_claude_while_nobody_watches() {
 async fn narrates_each_download_once_however_often_it_progresses() {
     let world = World::unwatched();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
 
     world
         .claude()
-        .runs("print -l 'a 1%' 'a 10%' 'a 95%' 'a 100%' 'a' | live-view")
+        .runs("print -l 'a 1%' 'a 10%' 'a 95%' 'a 100%' 'a' | pbp-test downloads")
         .await
         .succeeds()
         .prints("downloading a\ndownloaded a\n");
@@ -1042,10 +1047,10 @@ async fn narrates_each_download_once_however_often_it_progresses() {
 async fn follows_a_program_that_claims_the_viewer_after_its_follower_opens() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print 'a one' | live-view"#,
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print 'a one' | pbp-test downloads"#,
     );
     let pid = world.workspace_file("pid").await;
 
@@ -1062,10 +1067,10 @@ async fn follows_a_program_that_claims_the_viewer_after_its_follower_opens() {
 async fn indents_a_programs_link_outside_of_the_link() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a 100%'; read -r } | live-view"#,
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a 100%'; read -r } | pbp-test downloads"#,
     );
     let pid = world.workspace_file("pid").await;
 
@@ -1085,10 +1090,10 @@ async fn indents_a_programs_link_outside_of_the_link() {
 async fn paints_a_programs_diff_in_color() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a one->two'; read -r } | live-view"#,
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a one->two'; read -r } | pbp-test downloads"#,
     );
     let pid = world.workspace_file("pid").await;
 
@@ -1110,10 +1115,10 @@ async fn draws_at_its_followers_width_for_a_program_that_never_listens_for_it() 
     let mut world = World::new();
     let file = "report-".repeat(6);
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(&format!(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print '{file} 50%' | live-view --once"#
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print '{file} 50%' | pbp-test downloads --once"#
     ));
     let pid = world.workspace_file("pid").await;
 
@@ -1133,10 +1138,10 @@ async fn draws_at_its_followers_width_for_a_program_that_never_listens_for_it() 
 async fn shows_each_program_a_command_runs_in_turn() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print 'a one' | live-view --once; print 'b two' | live-view --once"#,
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && read -r; print 'a one' | pbp-test downloads --once; print 'b two' | pbp-test downloads --once"#,
     );
     let pid = world.workspace_file("pid").await;
 
@@ -1153,10 +1158,10 @@ async fn shows_each_program_a_command_runs_in_turn() {
 async fn reflows_a_programs_text_to_its_followers_width() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a queued behind three other downloads today'; read -r } | live-view"#,
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { print 'a queued behind three other downloads today'; read -r } | pbp-test downloads"#,
     );
     let pid = world.workspace_file("pid").await;
 
@@ -1174,10 +1179,10 @@ async fn recuts_a_programs_rows_when_its_follower_opens() {
     let mut world = World::new();
     let row = "0123456789".repeat(10);
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(&format!(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && {{ print 'a {row}'; read -r }} | live-view"#
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && {{ print 'a {row}'; read -r }} | pbp-test downloads"#
     ));
     let pid = world.workspace_file("pid").await;
 
@@ -1195,10 +1200,10 @@ async fn recuts_a_programs_rows_when_its_follower_resizes() {
     let mut world = World::new();
     let row = "0123456789".repeat(10);
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(&format!(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && {{ print 'a {row}'; read -r }} | live-view"#
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && {{ print 'a {row}'; read -r }} | pbp-test downloads"#
     ));
     let pid = world.workspace_file("pid").await;
 
@@ -1220,11 +1225,11 @@ async fn recuts_a_programs_rows_when_its_follower_resizes() {
 async fn shows_a_programs_rows_to_its_follower() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let ran = world
         .claude()
-        .runs(r#"print -r -- "$PPID" && print 'a one' | live-view"#)
+        .runs(r#"print -r -- "$PPID" && print 'a one' | pbp-test downloads"#)
         .await;
     let pid = ran
         .succeeds()
@@ -1242,11 +1247,11 @@ async fn shows_a_programs_rows_to_its_follower() {
 async fn redraws_a_programs_rows_in_place_for_its_follower() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let ran = world
         .claude()
-        .runs(r#"print -r -- "$PPID" && printf 'a one\nb two\n' | live-view"#)
+        .runs(r#"print -r -- "$PPID" && printf 'a one\nb two\n' | pbp-test downloads"#)
         .await;
     let pid = ran
         .succeeds()
@@ -1264,11 +1269,11 @@ async fn redraws_a_programs_rows_in_place_for_its_follower() {
 async fn draws_a_programs_rows_in_the_order_it_gives_them() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let ran = world
         .claude()
-        .runs(r#"print -r -- "$PPID" && printf 'a one\nc three\nb two\n' | live-view"#)
+        .runs(r#"print -r -- "$PPID" && printf 'a one\nc three\nb two\n' | pbp-test downloads"#)
         .await;
     let pid = ran
         .succeeds()
@@ -1286,11 +1291,11 @@ async fn draws_a_programs_rows_in_the_order_it_gives_them() {
 async fn clears_a_row_its_program_drops_from_its_followers_view() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let ran = world
         .claude()
-        .runs(r#"print -r -- "$PPID" && printf 'a one\nb two\na\n' | live-view"#)
+        .runs(r#"print -r -- "$PPID" && printf 'a one\nb two\na\n' | pbp-test downloads"#)
         .await;
     let pid = ran
         .succeeds()
@@ -1308,12 +1313,12 @@ async fn clears_a_row_its_program_drops_from_its_followers_view() {
 async fn shortens_a_downloads_name_so_its_progress_fits_the_viewers_width() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer().resize(8);
     world.viewer_width_becomes(8).await;
     let ran = world
         .claude()
-        .runs(r#"print -r -- "$PPID" && print 'report.pdf 50%' | live-view"#)
+        .runs(r#"print -r -- "$PPID" && print 'report.pdf 50%' | pbp-test downloads"#)
         .await;
     let pid = ran
         .succeeds()
@@ -1332,12 +1337,12 @@ async fn cuts_a_programs_rows_to_the_viewers_width() {
     let mut world = World::new();
     let row = "0123456789".repeat(10);
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let ran = world
         .claude()
         .runs(&format!(
-            r#"print -r -- "$PPID" && print 'a {row}' | live-view"#
+            r#"print -r -- "$PPID" && print 'a {row}' | pbp-test downloads"#
         ))
         .await;
     let pid = ran
@@ -1359,12 +1364,12 @@ async fn cuts_a_programs_rows_to_the_viewers_width() {
 async fn cuts_wide_characters_by_the_columns_they_take() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer().resize(7);
     world.viewer_width_becomes(7).await;
     let ran = world
         .claude()
-        .runs(r#"print -r -- "$PPID" && print 'a 表表表表表' | live-view"#)
+        .runs(r#"print -r -- "$PPID" && print 'a 表表表表表' | pbp-test downloads"#)
         .await;
     let pid = ran
         .succeeds()
@@ -1382,12 +1387,12 @@ async fn cuts_wide_characters_by_the_columns_they_take() {
 async fn cuts_colored_rows_by_the_columns_they_show() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer().resize(7);
     world.viewer_width_becomes(7).await;
     let ran = world
         .claude()
-        .runs(r#"print -r -- "$PPID" && print 'a \e[32m0123456789\e[0m' | live-view"#)
+        .runs(r#"print -r -- "$PPID" && print 'a \e[32m0123456789\e[0m' | pbp-test downloads"#)
         .await;
     let pid = ran
         .succeeds()
@@ -1405,10 +1410,10 @@ async fn cuts_colored_rows_by_the_columns_they_show() {
 async fn animates_spinners_together_while_their_program_waits() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let running = world.claude().starts(
-        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { printf 'a ?\nb ?\n'; read -r } | live-view"#,
+        r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && { printf 'a ?\nb ?\n'; read -r } | pbp-test downloads"#,
     );
     let pid = world.workspace_file("pid").await;
 
@@ -1432,11 +1437,11 @@ async fn animates_spinners_together_while_their_program_waits() {
 async fn keeps_spinners_turning_when_their_program_redraws() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let mut running = world
         .claude()
-        .starts(r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && live-view"#);
+        .starts(r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && pbp-test downloads"#);
     let pid = world.workspace_file("pid").await;
 
     world.follow(pid.trim());
@@ -1455,17 +1460,35 @@ async fn keeps_spinners_turning_when_their_program_redraws() {
 async fn fits_a_programs_rows_to_its_followers_height() {
     let mut world = World::new();
 
-    world.installs("live-view");
+    world.installs("pbp-test");
     world.viewer_width_becomes(Viewer::COLUMNS).await;
     let mut running = world
         .claude()
-        .starts(r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && live-view"#);
+        .starts(r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && pbp-test downloads"#);
     let pid = world.workspace_file("pid").await;
 
     world.follow(pid.trim());
     world.follower().resize_to(Viewer::FOLLOWER_COLUMNS, 3);
     running.types("a 1%\nb 2%\nc 3%\n").await;
     world.follower().sees(&["a 1%", "b 2%"]).await;
+    running.finishes().await.succeeds();
+    world.close().await;
+}
+
+#[tokio::test]
+async fn debugs_the_size_a_program_is_told() {
+    let mut world = World::new();
+
+    world.installs("pbp-test");
+    world.viewer_width_becomes(Viewer::COLUMNS).await;
+    let running = world
+        .claude()
+        .starts(r#"print -r -- "$PPID" > pid.tmp && mv pid.tmp pid && pbp-test debug"#);
+    let pid = world.workspace_file("pid").await;
+
+    world.follow(pid.trim());
+    world.follower().resize_to(40, 10);
+    world.follower().sees(&["columns 40", "rows 9"]).await;
     running.finishes().await.succeeds();
     world.close().await;
 }

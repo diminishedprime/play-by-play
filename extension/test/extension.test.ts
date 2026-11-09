@@ -78,8 +78,8 @@ test("the start command goes away when the extension's subscriptions are dispose
 
 test("opens a follower beside the viewer whenever a command claims it", async () => {
   await using workspace = await temporaryWorkspace();
-  const first = "print 'a one' | live-view";
-  const second = "print 'b two' | live-view";
+  const first = "print 'a one' | pbp-test downloads";
+  const second = "print 'b two' | pbp-test downloads";
 
   using extension = await activated(workspace.path);
   await viewerWatches(workspace.path);

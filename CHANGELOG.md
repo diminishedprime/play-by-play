@@ -1,3 +1,9 @@
+## 1.0.0-alpha.29 (2026-11-09)
+
+### Features
+
+- rename the e2e program to pbp-test and add a debug mode
+
 ## 1.0.0-alpha.28 (2026-11-08)
 
 ### Features
