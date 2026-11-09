@@ -1,3 +1,9 @@
+## 1.0.0-alpha.30 (2026-11-09)
+
+### Bug Fixes
+
+- find the lab mirror from the checkout and use if for pbp-test's once flag
+
 ## 1.0.0-alpha.29 (2026-11-09)
 
 ### Features

@@ -41,9 +41,10 @@ async fn main() {
         Program::Downloads { once } => {
             let broadcast = Broadcast::open().await.expect("the broadcast opens");
             let downloader = Downloader::new(broadcast, Network::from_stdin());
-            match once {
-                true => downloader.run_once().await,
-                false => downloader.run().await,
+            if once {
+                downloader.run_once().await;
+            } else {
+                downloader.run().await;
             }
         }
         Program::Debug => {

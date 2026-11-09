@@ -1107,7 +1107,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "play-by-play"
-version = "1.0.0-alpha.29"
+version = "1.0.0-alpha.30"
 dependencies = [
  "bytes",
  "hex",
@@ -1127,7 +1127,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-cli"
-version = "1.0.0-alpha.29"
+version = "1.0.0-alpha.30"
 dependencies = [
  "bat",
  "bytes",
@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-e2e"
-version = "1.0.0-alpha.29"
+version = "1.0.0-alpha.30"
 dependencies = [
  "clap",
  "libc",
@@ -1169,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "play-by-play-native"
-version = "1.0.0-alpha.29"
+version = "1.0.0-alpha.30"
 dependencies = [
  "napi",
  "napi-build",

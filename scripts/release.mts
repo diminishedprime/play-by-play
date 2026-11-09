@@ -15,6 +15,7 @@ const GIT_SUFFIX = /\.git$/;
 const GITHUB_REPO = "diminishedprime/play-by-play";
 const GH_REPO_FLAGS = ["--repo", GITHUB_REPO];
 const LAB_MIRROR = "mirrored/play-by-play";
+const LAB_CHECKOUT = "tree/lab/util/play-by-play";
 
 const exec = promisify(execFile);
 
@@ -105,8 +106,12 @@ async function publishToGithub(tag: string, notes: string, prerelease: boolean) 
 }
 
 async function labMirrorClone() {
-  const { stdout } = await exec("lab-root");
-  return join(stdout.trim(), "library", LAB_MIRROR);
+  const checkout = await git("rev-parse", "--show-toplevel");
+  if (!checkout.endsWith(`/${LAB_CHECKOUT}`)) {
+    throw new Error(`expected the checkout at <lab root>/${LAB_CHECKOUT}, it's at ${checkout}`);
+  }
+  const root = checkout.slice(0, -`/${LAB_CHECKOUT}`.length);
+  return join(root, "library", LAB_MIRROR);
 }
 
 function labAddress() {
