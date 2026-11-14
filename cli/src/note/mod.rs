@@ -9,6 +9,7 @@
 //! ```
 
 pub mod agent;
+pub mod bash;
 pub mod edit;
 pub mod fetch;
 pub mod patch;
@@ -30,6 +31,7 @@ use crate::cmd::note::NoteKind;
 use crate::error::AppResult;
 use crate::log::{CLEAR, ColorWheel, Painted, Screen};
 use crate::note::agent::{AgentInput, AgentResult};
+use crate::note::bash::{BashInput, BashResult};
 use crate::note::edit::{EditInput, EditResult};
 use crate::note::fetch::{FetchInput, FetchResult};
 use crate::note::read::{ReadInput, ReadResult};
@@ -54,6 +56,7 @@ pub fn header(log: &Log, kind: &NoteKind) -> AppResult {
         NoteKind::Fetch => serde_json::from_str::<FetchInput>(&json)?.headed(log, color),
         NoteKind::Search => serde_json::from_str::<SearchInput>(&json)?.headed(log, color),
         NoteKind::Agent => serde_json::from_str::<AgentInput>(&json)?.headed(log, color),
+        NoteKind::Bash => serde_json::from_str::<BashInput>(&json)?.headed(log, color),
     }?;
     writeln!(io::stdout(), "{color}")?;
     Ok(())
@@ -76,6 +79,7 @@ pub fn result(log: &Log, kind: &NoteKind, color: Color) -> AppResult {
         NoteKind::Fetch => serde_json::from_str::<FetchResult>(&json)?.appended(log),
         NoteKind::Search => serde_json::from_str::<SearchResult>(&json)?.appended(log),
         NoteKind::Agent => serde_json::from_str::<OpenResult<AgentResult>>(&json)?.appended(log),
+        NoteKind::Bash => serde_json::from_str::<OpenResult<BashResult>>(&json)?.appended(log),
     }?;
     writeln!(
         log.append()?,

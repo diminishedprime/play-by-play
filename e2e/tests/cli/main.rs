@@ -282,6 +282,27 @@ async fn shows_the_viewer_a_command_claude_ran() {
 }
 
 #[tokio::test]
+async fn shows_the_viewer_a_command_claude_ran_without_pbp() {
+    let mut world = World::new();
+
+    world
+        .claude()
+        .noted(
+            "bash",
+            &json!({ "command": "make", "description": "Build it" }),
+            &json!({ "stdout": "out\n", "stderr": "oops\n", "interrupted": true }),
+        )
+        .await
+        .succeeds();
+
+    world
+        .viewer()
+        .sees(&["$ make", "out", "oops", "interrupted", "bash: end"])
+        .await;
+    world.close().await;
+}
+
+#[tokio::test]
 async fn formats_an_agents_markdown() {
     let mut world = World::new();
 

@@ -38,6 +38,8 @@ pub enum NoteKind {
     Search,
     /// A subagent Claude started.
     Agent,
+    /// A command Claude ran without `pbp -c`.
+    Bash,
 }
 
 impl NoteKind {
@@ -51,6 +53,7 @@ impl NoteKind {
             NoteKind::Fetch => "fetch",
             NoteKind::Search => "search",
             NoteKind::Agent => "agent",
+            NoteKind::Bash => "bash",
         }
     }
 }

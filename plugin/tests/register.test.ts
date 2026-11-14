@@ -55,6 +55,46 @@ test("a Bash command runs through pbp -c", async ($, on) => {
   ]);
 });
 
+test("in auto mode, a Bash command is noted instead of wrapped", async ($, on) => {
+  const { called, ran } = engine(on, { binary: true });
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  await $.classic.UserPromptSubmit({ prompt: "go", permission_mode: "auto" });
+  await $.tool.call({ tool: "Bash", command: "echo 'hi'" });
+
+  expect(called).toEqual([expect.objectContaining({ command: "echo 'hi'" })]);
+  expect(ran).toEqual([
+    { argv: ["play-by-play", "--version"], stdin: undefined },
+    {
+      argv: ["play-by-play", "note", "header", "bash"],
+      stdin: expect.objectContaining({ command: "echo 'hi'" }),
+    },
+    {
+      argv: ["play-by-play", "note", "result", "--color", "green", "bash"],
+      stdin: { type: "file_unchanged", file: { filePath: "/notes.md" } },
+    },
+  ]);
+});
+
+test("after leaving auto mode, a Bash command is wrapped again", async ($, on) => {
+  const { called } = engine(on, { binary: true });
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  await $.classic.UserPromptSubmit({ prompt: "go", permission_mode: "auto" });
+  await $.classic.PostToolUse({
+    tool_name: "Read",
+    tool_input: { file_path: "/notes.md" },
+    tool_response: {},
+    tool_use_id: "read",
+    permission_mode: "default",
+  });
+  await $.tool.call({ tool: "Bash", command: "echo 'hi'" });
+
+  expect(called).toEqual([
+    expect.objectContaining({ command: "pbp -c 'echo '\\''hi'\\'''" }),
+  ]);
+});
+
 test("a wrapped Bash command is checked as Claude wrote it", async ($, on) => {
   const { checked } = engine(on, { binary: true });
 
@@ -145,6 +185,8 @@ function engine(
     return { value: undefined };
   });
   on("session.start", (_, e) => ({ cwd: e.cwd }));
+  on("classic.UserPromptSubmit", () => ({}));
+  on("classic.PostToolUse", () => ({}));
   const called: unknown[] = [];
   on("tool.call", (_, e) => {
     called.push(e);

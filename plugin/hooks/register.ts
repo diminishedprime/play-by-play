@@ -12,9 +12,21 @@ const kinds = {
   WebFetch: "fetch",
   WebSearch: "search",
   Agent: "agent",
+  Bash: "bash",
 } as const;
 
 let installCheck: Promise<boolean> | undefined;
+
+let permissionMode: string | undefined;
+
+function remembered<E extends { permission_mode?: string }, R>(
+  _: EngineInterface,
+  e: E,
+  next: (e: E) => R,
+): R {
+  permissionMode = e.permission_mode ?? permissionMode;
+  return next(e);
+}
 
 function isInstalled($: EngineInterface): Promise<boolean> {
   installCheck ??= binaryRuns($);
@@ -41,10 +53,18 @@ export const register: Register = (on) => {
     return next(e);
   });
 
+  on("classic.SessionStart", remembered);
+  on("classic.UserPromptSubmit", remembered);
+  on("classic.PostToolUse", remembered);
+  on("classic.PostToolUseFailure", remembered);
+
   on("tool.call", { tool: "Bash" }, async ($, e, next) => {
     const installed = await isInstalled($);
     if (!installed) {
       return next(e);
+    }
+    if (permissionMode === "auto") {
+      return noted($, e, next);
     }
     return next({ ...e, command: wrapped(e.command) });
   }).catch(failed);

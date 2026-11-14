@@ -1,3 +1,9 @@
+## 1.0.0-alpha.31 (2026-11-14)
+
+### Features
+
+- note Bash commands instead of wrapping them in auto mode
+
 ## 1.0.0-alpha.30 (2026-11-09)
 
 ### Bug Fixes
